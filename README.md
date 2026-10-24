@@ -43,6 +43,7 @@ skipCommands:
 
 - `auditLogEnabled`：是否记录审核日志，默认 `false`。
 - `thinkingEnabled`：是否启用审核模型思考模式，默认 `false`。
+- `reviewTimeoutMs`：审核模型请求超时毫秒数，默认 `20000`；超过宿主扩展钩子预算时会自动缩短。
 
 启用审核日志后，插件将每条实际发送给审核模型的命令及审核结果追加写入当前项目：
 
@@ -57,6 +58,7 @@ skipCommands:
 ```yaml
 auditLogEnabled: true
 thinkingEnabled: false
+reviewTimeoutMs: 20000
 ```
 
 命令配置：
@@ -64,6 +66,7 @@ thinkingEnabled: false
 ```sh
 omp-zh plugin config set omp-command-review auditLogEnabled true
 omp-zh plugin config set omp-command-review thinkingEnabled true
+omp-zh plugin config set omp-command-review reviewTimeoutMs 20000
 ```
 
 环境变量：
@@ -71,9 +74,23 @@ omp-zh plugin config set omp-command-review thinkingEnabled true
 ```sh
 export OMP_COMMAND_REVIEW_AUDIT_LOG=true
 export OMP_COMMAND_REVIEW_THINKING=true
+export OMP_COMMAND_REVIEW_TIMEOUT_MS=20000
 ```
 
 思考模式使用 omp-zh 内置 `@oh-my-pi/pi-ai` 的自动策略：启用时不发送显式 effort，由服务端使用默认思考策略；`openai-responses` 使用服务端默认的 `reasoning` 行为，`openai-completions` 使用服务端默认的 `reasoning_effort` 行为。关闭时使用对应 API 的关闭推理参数，不直接拼接请求 JSON，因此两种 API 格式保持兼容。具体思考强度由审核服务和模型决定，不固定为 low/medium/high。
+
+审核模型请求有独立截止时间，超时会中止 HTTP 请求、写入 `error` 审计结果并按 fail-closed 阻止命令。实际请求上限取 `reviewTimeoutMs` 与 omp `extensionHandlers.toolCallTimeoutMs` 的 80% 中较小值（omp 默认钩子期限为 30000 毫秒）。要允许更长请求，先提高 `~/.omp/agent/config.yml` 中的钩子期限，再设置更小的插件超时，例如：
+
+```yaml
+# ~/.omp/agent/config.yml
+extensionHandlers:
+  toolCallTimeoutMs: 60000
+```
+
+```yaml
+# <项目>/.omp/command-review.yml
+reviewTimeoutMs: 45000
+```
 
 注意：审核日志可能包含命令中的路径、参数和敏感数据。启用前确认当前项目允许保存这些内容，并将 `.omp/command-review-audit.jsonl` 加入项目的忽略规则。
 

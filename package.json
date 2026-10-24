@@ -61,6 +61,12 @@
         "default": false,
         "description": "是否为审核模型启用自动思考模式；Responses 和 Chat Completions 由 omp 自动映射。",
         "env": "OMP_COMMAND_REVIEW_THINKING"
+      },
+      "reviewTimeoutMs": {
+        "type": "number",
+        "default": 20000,
+        "description": "审核模型请求超时毫秒数；实际值会低于 omp 扩展钩子期限以便 fail-closed 阻断并记录日志。",
+        "env": "OMP_COMMAND_REVIEW_TIMEOUT_MS"
       }
     }
   }

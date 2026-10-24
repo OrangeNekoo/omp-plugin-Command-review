@@ -13,6 +13,7 @@ export interface ReviewConfig {
   skipCommands: string[];
   auditLogEnabled: boolean;
   thinkingEnabled: boolean;
+  reviewTimeoutMs: number;
 }
 
 interface ReviewConfigFile {
@@ -24,7 +25,9 @@ interface ReviewConfigFile {
   skipCommands?: string[];
   auditLogEnabled?: boolean;
   thinkingEnabled?: boolean;
+  reviewTimeoutMs?: number;
 }
+
 
 // Files are intentionally separate from omp's main config to keep this plugin's schema isolated.
 // Project configuration wins over global configuration; both win over plugin-manager settings.
@@ -36,6 +39,7 @@ interface ReviewConfigLoadOptions {
 }
 
 const DEFAULT_API: ReviewApi = "chat-completions";
+const DEFAULT_REVIEW_TIMEOUT_MS = 20_000;
 const ENV_KEYS = {
   endpointUrl: "OMP_COMMAND_REVIEW_URL",
   api: "OMP_COMMAND_REVIEW_API",
@@ -44,6 +48,7 @@ const ENV_KEYS = {
   skipCommands: "OMP_COMMAND_REVIEW_SKIP_COMMANDS",
   auditLogEnabled: "OMP_COMMAND_REVIEW_AUDIT_LOG",
   thinkingEnabled: "OMP_COMMAND_REVIEW_THINKING",
+  reviewTimeoutMs: "OMP_COMMAND_REVIEW_TIMEOUT_MS",
 } as const;
 
 
@@ -81,6 +86,20 @@ function readBoolean(value: unknown, field: string): boolean | undefined {
   throw new Error(`配置字段 ${field} 必须是布尔值。`);
 }
 
+function readPositiveInteger(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  const numberValue = typeof value === "number" ? value : Number(readString(value, field));
+  if (!Number.isSafeInteger(numberValue) || numberValue <= 0) {
+    throw new Error(`配置字段 ${field} 必须是正整数毫秒数。`);
+  }
+  return numberValue;
+}
+
+export function getReviewTimeoutBudgetMs(reviewTimeoutMs: number, toolCallTimeoutMs: number): number {
+  const hostBudgetMs = Math.max(1, Math.floor(toolCallTimeoutMs * 0.8));
+  return Math.min(reviewTimeoutMs, hostBudgetMs);
+}
+
 
 function normalizeFile(value: unknown, source: string): ReviewConfigFile {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -96,6 +115,7 @@ function normalizeFile(value: unknown, source: string): ReviewConfigFile {
     skipCommands: true,
     auditLogEnabled: true,
     thinkingEnabled: true,
+    reviewTimeoutMs: true,
   };
   for (const key of Object.keys(record)) {
     if (!allowed[key]) throw new Error(`${source} 包含未知字段 ${key}。`);
@@ -109,6 +129,7 @@ function normalizeFile(value: unknown, source: string): ReviewConfigFile {
     skipCommands: readSkipCommands(record.skipCommands, source),
     auditLogEnabled: readBoolean(record.auditLogEnabled, `${source}.auditLogEnabled`),
     thinkingEnabled: readBoolean(record.thinkingEnabled, `${source}.thinkingEnabled`),
+    reviewTimeoutMs: readPositiveInteger(record.reviewTimeoutMs, `${source}.reviewTimeoutMs`),
   };
 
 }
@@ -121,6 +142,7 @@ function normalizePluginSettings(settings: Record<string, unknown>): ReviewConfi
     skipCommands: readSkipCommands(settings.skipCommands, "plugin"),
     auditLogEnabled: readBoolean(settings.auditLogEnabled, "plugin.auditLogEnabled"),
     thinkingEnabled: readBoolean(settings.thinkingEnabled, "plugin.thinkingEnabled"),
+    reviewTimeoutMs: readPositiveInteger(settings.reviewTimeoutMs, "plugin.reviewTimeoutMs"),
   };
 }
 function mergeConfigFiles(...sources: ReviewConfigFile[]): ReviewConfigFile {
@@ -171,6 +193,7 @@ export async function loadReviewConfig(
     skipCommands: readSkipCommands(env[ENV_KEYS.skipCommands], "环境变量"),
     auditLogEnabled: readBoolean(env[ENV_KEYS.auditLogEnabled], "环境变量 OMP_COMMAND_REVIEW_AUDIT_LOG"),
     thinkingEnabled: readBoolean(env[ENV_KEYS.thinkingEnabled], "环境变量 OMP_COMMAND_REVIEW_THINKING"),
+    reviewTimeoutMs: readPositiveInteger(env[ENV_KEYS.reviewTimeoutMs], "环境变量 OMP_COMMAND_REVIEW_TIMEOUT_MS"),
   };
   const merged = mergeConfigFiles(environment, normalizePluginSettings(pluginSettings), globalFile, projectFile);
   return {
@@ -181,5 +204,6 @@ export async function loadReviewConfig(
     skipCommands: merged.skipCommands ?? [],
     auditLogEnabled: merged.auditLogEnabled ?? false,
     thinkingEnabled: merged.thinkingEnabled ?? false,
+    reviewTimeoutMs: merged.reviewTimeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS,
   };
 }

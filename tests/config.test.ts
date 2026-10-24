@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { loadReviewConfig } from "../src/config";
+import { getReviewTimeoutBudgetMs, loadReviewConfig } from "../src/config";
 
 const temporaryDirectories: string[] = [];
 afterEach(async () => {
@@ -62,6 +62,29 @@ describe("review config files", () => {
 
     expect(config.auditLogEnabled).toBe(false);
     expect(config.thinkingEnabled).toBe(false);
+  });
+  test("uses a bounded review timeout by default", async () => {
+    const { home, cwd } = await makeConfigHome();
+
+    const config = await loadReviewConfig(cwd, {}, { home, env: {} });
+
+    expect(config.reviewTimeoutMs).toBe(20_000);
+  });
+
+  test("reads review timeout from the project configuration", async () => {
+    const { home, cwd } = await makeConfigHome();
+    await mkdir(path.join(cwd, ".omp"), { recursive: true });
+    await writeFile(path.join(cwd, ".omp", "command-review.yml"), "reviewTimeoutMs: 15000\n");
+
+    const config = await loadReviewConfig(cwd, {}, { home, env: {} });
+
+    expect(config.reviewTimeoutMs).toBe(15_000);
+  });
+
+  test("keeps review requests inside the host tool-call deadline", () => {
+    expect(getReviewTimeoutBudgetMs(60_000, 30_000)).toBe(24_000);
+    expect(getReviewTimeoutBudgetMs(15_000, 30_000)).toBe(15_000);
+    expect(getReviewTimeoutBudgetMs(60_000, 10_000)).toBe(8_000);
   });
 
   test("merges audit logging and thinking settings from plugin, global, and project sources", async () => {
