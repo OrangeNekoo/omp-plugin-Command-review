@@ -1,0 +1,55 @@
+{
+  "name": "omp-command-review",
+  "version": "0.1.0",
+  "description": "审查 oh-my-pi yolo 模式下的高危 bash 命令，并支持自定义 OpenAI-compatible 审核模型。",
+  "type": "module",
+  "files": ["src", "README.md", "LICENSE"],
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit --skipLibCheck"
+  },
+  "dependencies": {
+    "@oh-my-pi/pi-ai": "^18.12.6",
+    "@oh-my-pi/pi-catalog": "^18.12.6"
+  },
+  "peerDependencies": {
+    "@oh-my-pi/pi-coding-agent": ">=18.12.6"
+  },
+  "devDependencies": {
+    "@oh-my-pi/pi-coding-agent": "^18.12.6",
+    "@types/bun": "latest",
+    "typescript": "^5.9.0"
+  },
+  "omp": {
+    "extensions": ["./src/index.ts"],
+    "settings": {
+      "endpointUrl": {
+        "type": "string",
+        "description": "审核模型的 OpenAI-compatible API 根 URL，例如 https://api.example.com/v1。",
+        "env": "OMP_COMMAND_REVIEW_URL"
+      },
+      "api": {
+        "type": "enum",
+        "values": ["responses", "chat-completions"],
+        "default": "chat-completions",
+        "description": "审核模型使用 Responses 或 Chat Completions API。"
+      },
+      "apiKey": {
+        "type": "string",
+        "secret": true,
+        "description": "审核模型 API key；优先使用环境变量 OMP_COMMAND_REVIEW_API_KEY。",
+        "env": "OMP_COMMAND_REVIEW_API_KEY"
+      },
+      "model": {
+        "type": "string",
+        "description": "审核模型 ID，例如 gpt-4o-mini。",
+        "env": "OMP_COMMAND_REVIEW_MODEL"
+      },
+      "skipCommands": {
+        "type": "string",
+        "description": "跳过审核的 glob 命令，使用逗号或换行分隔。",
+        "env": "OMP_COMMAND_REVIEW_SKIP_COMMANDS"
+      }
+    }
+  }
+}
