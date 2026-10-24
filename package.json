@@ -1,6 +1,6 @@
 {
   "name": "omp-command-review",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "description": "在 oh-my-pi yolo 模式下审查所有工具调用，使用自定义 OpenAI-compatible 或 jev 审核模型，未通过时交用户判断。",
   "type": "module",
   "files": [
