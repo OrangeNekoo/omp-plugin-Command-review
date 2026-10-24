@@ -6,6 +6,9 @@
   "files": [
     "src",
     "README.md",
+    "README.en.md",
+    "DISCLAIMER.md",
+    "DISCLAIMER.zh-CN.md",
     "LICENSE"
   ],
   "scripts": {
