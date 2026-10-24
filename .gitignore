@@ -3,3 +3,4 @@ dist/
 coverage/
 .DS_Store
 /.omp
+.omp/command-review-audit.json

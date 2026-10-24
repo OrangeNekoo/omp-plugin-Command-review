@@ -1,9 +1,13 @@
 {
   "name": "omp-command-review",
   "version": "0.1.0",
-  "description": "审查 oh-my-pi yolo 模式下的高危 bash 命令，并支持自定义 OpenAI-compatible 审核模型。",
+  "description": "在 oh-my-pi yolo 模式下审查所有工具调用，使用自定义 OpenAI-compatible 或 jev 审核模型，未通过时交用户判断。",
   "type": "module",
-  "files": ["src", "README.md", "LICENSE"],
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit --skipLibCheck"
@@ -21,18 +25,24 @@
     "typescript": "^5.9.0"
   },
   "omp": {
-    "extensions": ["./src/index.ts"],
+    "extensions": [
+      "./src/index.ts"
+    ],
     "settings": {
       "endpointUrl": {
         "type": "string",
-        "description": "审核模型的 OpenAI-compatible API 根 URL，例如 https://api.example.com/v1。",
+        "description": "审核服务根 URL，例如 https://api.example.com/v1；api=jev 时填 https://www.dmxapi.cn，插件自动拼接 /typesafe/v1/systemone。",
         "env": "OMP_COMMAND_REVIEW_URL"
       },
       "api": {
         "type": "enum",
-        "values": ["responses", "chat-completions"],
+        "values": [
+          "responses",
+          "chat-completions",
+          "jev"
+        ],
         "default": "chat-completions",
-        "description": "审核模型使用 Responses 或 Chat Completions API。"
+        "description": "审核模型协议：chat-completions、responses，或 jev（TypeSafe System One）。"
       },
       "apiKey": {
         "type": "string",
@@ -42,24 +52,24 @@
       },
       "model": {
         "type": "string",
-        "description": "审核模型 ID，例如 gpt-4o-mini。",
+        "description": "审核模型 ID，例如 gpt-4o-mini；api=jev 时为 jev-1.14.0 这样的 TypeSafe 模型名。",
         "env": "OMP_COMMAND_REVIEW_MODEL"
       },
       "skipCommands": {
         "type": "string",
-        "description": "跳过审核的 glob 命令，使用逗号或换行分隔。",
+        "description": "跳过审核的 glob 列表，同时匹配工具名与命令文本，使用逗号或换行分隔；加入 read、grep、glob、edit、write 等工具名即可跳过这些工具。",
         "env": "OMP_COMMAND_REVIEW_SKIP_COMMANDS"
       },
       "auditLogEnabled": {
         "type": "boolean",
         "default": false,
-        "description": "是否将发送给审核模型的命令和审核结果记录到当前项目的 .omp/command-review-audit.jsonl。",
+        "description": "是否将每次审核的工具调用与结论记录到当前项目的 .omp/command-review-audit.json（JSON 数组）。",
         "env": "OMP_COMMAND_REVIEW_AUDIT_LOG"
       },
       "thinkingEnabled": {
         "type": "boolean",
         "default": false,
-        "description": "是否为审核模型启用自动思考模式；Responses 和 Chat Completions 由 omp 自动映射。",
+        "description": "是否为审核模型启用自动思考模式；仅对 responses 与 chat-completions 生效，jev 不使用该字段。",
         "env": "OMP_COMMAND_REVIEW_THINKING"
       },
       "reviewTimeoutMs": {

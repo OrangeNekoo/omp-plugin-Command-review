@@ -185,32 +185,42 @@ function globToRegExp(pattern: string): RegExp {
   return new RegExp(`${source}$`);
 }
 
-export function commandMatchesSkipPattern(command: string, patterns: string[]): boolean {
-  const normalized = command.trim();
+/**
+ * 跳过规则同时匹配工具名与审核文本：`read` 跳过 read 工具，`npm test*` 匹配完整命令。
+ * 两者任一命中即视为用户显式放行。
+ */
+export function matchesSkipPattern(toolName: string, text: string | undefined, patterns: string[]): boolean {
+  const candidates = [toolName.trim(), text?.trim()].filter((value): value is string => Boolean(value));
   return patterns.some((pattern) => {
+    let matcher: RegExp;
     try {
-      return globToRegExp(pattern.trim()).test(normalized);
+      matcher = globToRegExp(pattern.trim());
     } catch {
       return false;
     }
+    return candidates.some((candidate) => matcher.test(candidate));
   });
 }
 
 export interface ReviewDecision {
-  risk: "high" | "low";
+  /** pass：通过，omp 执行命令；review：不通过，交由用户审查判断。 */
+  verdict: "pass" | "review";
   reason: string;
 }
 
+/** 解析 OpenAI 兼容审核模型的 JSON 输出；无法识别时返回 null。 */
 export function parseReviewDecision(response: string): ReviewDecision | null {
   const normalized = response.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   try {
     const value: unknown = JSON.parse(normalized);
     if (typeof value !== "object" || value === null) return null;
-    const decision = value as { risk?: unknown; reason?: unknown };
-    if ((decision.risk !== "high" && decision.risk !== "low") || typeof decision.reason !== "string") return null;
-    const reason = decision.reason.trim();
+    if (!("verdict" in value) || !("reason" in value)) return null;
+    const verdict = value.verdict;
+    const rawReason = value.reason;
+    if ((verdict !== "pass" && verdict !== "review") || typeof rawReason !== "string") return null;
+    const reason = rawReason.trim();
     if (!reason || reason.length > 2000) return null;
-    return { risk: decision.risk, reason };
+    return { verdict, reason };
   } catch {
     return null;
   }

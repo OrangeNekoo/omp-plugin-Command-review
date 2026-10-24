@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  commandMatchesSkipPattern,
-  isReadOnlyCommand,
-  parseReviewDecision,
-  parseSkipPatterns,
-} from "../src/policy";
+import { isReadOnlyCommand, matchesSkipPattern, parseReviewDecision, parseSkipPatterns } from "../src/policy";
 
 describe("command policy", () => {
   test("recognizes a simple read command without inspecting it", () => {
@@ -31,9 +26,9 @@ describe("command policy", () => {
     expect(isReadOnlyCommand("bun pm trust")).toBe(false);
   });
 
-  test("rejects incomplete and unsupported risk decisions", () => {
-    expect(parseReviewDecision('{"risk":"critical","reason":"unknown"}')).toBeNull();
-    expect(parseReviewDecision('{"risk":"high","reason":"  "}')).toBeNull();
+  test("rejects incomplete and unsupported verdicts", () => {
+    expect(parseReviewDecision('{"verdict":"critical","reason":"unknown"}')).toBeNull();
+    expect(parseReviewDecision('{"verdict":"pass","reason":"  "}')).toBeNull();
   });
 
   test("parses comma and newline separated skip patterns", () => {
@@ -41,19 +36,29 @@ describe("command policy", () => {
   });
 
   test("matches configured glob patterns against the complete normalized command", () => {
-    expect(commandMatchesSkipPattern("npm test -- --runInBand", ["npm test*"])).toBe(true);
-    expect(commandMatchesSkipPattern("npm install", ["npm test*"])).toBe(false);
+    expect(matchesSkipPattern("bash", "npm test -- --runInBand", ["npm test*"])).toBe(true);
+    expect(matchesSkipPattern("bash", "npm install", ["npm test*"])).toBe(false);
   });
 
-  test("accepts only a high-risk decision from a model response", () => {
-    expect(parseReviewDecision('{"risk":"high","reason":"recursive deletion"}')).toEqual({
-      risk: "high",
+  test("matches tool names so non-bash tools can be skipped by configuration", () => {
+    expect(matchesSkipPattern("read", "src/index.ts", ["read"])).toBe(true);
+    expect(matchesSkipPattern("write", "{}", ["read", "grep", "glob", "edit", "write"])).toBe(true);
+    expect(matchesSkipPattern("task", "{}", ["read", "grep"])).toBe(false);
+  });
+
+  test("accepts only pass or review verdicts", () => {
+    expect(parseReviewDecision('{"verdict":"review","reason":"recursive deletion"}')).toEqual({
+      verdict: "review",
       reason: "recursive deletion",
     });
     expect(parseReviewDecision("not json")).toBeNull();
-    expect(parseReviewDecision('{"risk":"low","reason":"read-only"}')).toEqual({
-      risk: "low",
+    expect(parseReviewDecision('{"verdict":"pass","reason":"read-only"}')).toEqual({
+      verdict: "pass",
       reason: "read-only",
+    });
+    expect(parseReviewDecision('```json\n{"verdict":"pass","reason":"scoped"}\n```')).toEqual({
+      verdict: "pass",
+      reason: "scoped",
     });
   });
 });

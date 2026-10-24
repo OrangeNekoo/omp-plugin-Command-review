@@ -3,7 +3,8 @@ import path from "node:path";
 import { YAML } from "bun";
 import { parseSkipPatterns } from "./policy";
 
-export type ReviewApi = "responses" | "chat-completions";
+/** `jev` 走 TypeSafe System One 端点，请求体由插件按官方格式构造。 */
+export type ReviewApi = "responses" | "chat-completions" | "jev";
 
 export interface ReviewConfig {
   endpointUrl?: string;
@@ -62,8 +63,8 @@ function readString(value: unknown, field: string): string | undefined {
 function readApi(value: unknown, source: string): ReviewApi | undefined {
   const normalized = readString(value, `${source}.api`);
   if (normalized === undefined) return undefined;
-  if (normalized !== "responses" && normalized !== "chat-completions") {
-    throw new Error(`${source}.api 必须是 responses 或 chat-completions。`);
+  if (normalized !== "responses" && normalized !== "chat-completions" && normalized !== "jev") {
+    throw new Error(`${source}.api 必须是 responses、chat-completions 或 jev。`);
   }
   return normalized;
 }
