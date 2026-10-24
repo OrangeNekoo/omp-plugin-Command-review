@@ -11,6 +11,8 @@ export interface ReviewConfig {
   apiKey?: string;
   model?: string;
   skipCommands: string[];
+  auditLogEnabled: boolean;
+  thinkingEnabled: boolean;
 }
 
 interface ReviewConfigFile {
@@ -20,6 +22,8 @@ interface ReviewConfigFile {
   apiKeyEnv?: string;
   model?: string;
   skipCommands?: string[];
+  auditLogEnabled?: boolean;
+  thinkingEnabled?: boolean;
 }
 
 // Files are intentionally separate from omp's main config to keep this plugin's schema isolated.
@@ -38,6 +42,8 @@ const ENV_KEYS = {
   apiKey: "OMP_COMMAND_REVIEW_API_KEY",
   model: "OMP_COMMAND_REVIEW_MODEL",
   skipCommands: "OMP_COMMAND_REVIEW_SKIP_COMMANDS",
+  auditLogEnabled: "OMP_COMMAND_REVIEW_AUDIT_LOG",
+  thinkingEnabled: "OMP_COMMAND_REVIEW_THINKING",
 } as const;
 
 
@@ -65,6 +71,16 @@ function readSkipCommands(value: unknown, source: string): string[] | undefined 
   }
   return value.map((item) => item.trim()).filter(Boolean);
 }
+function readBoolean(value: unknown, field: string): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") throw new Error(`配置字段 ${field} 必须是布尔值。`);
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  throw new Error(`配置字段 ${field} 必须是布尔值。`);
+}
+
 
 function normalizeFile(value: unknown, source: string): ReviewConfigFile {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -78,6 +94,8 @@ function normalizeFile(value: unknown, source: string): ReviewConfigFile {
     apiKeyEnv: true,
     model: true,
     skipCommands: true,
+    auditLogEnabled: true,
+    thinkingEnabled: true,
   };
   for (const key of Object.keys(record)) {
     if (!allowed[key]) throw new Error(`${source} 包含未知字段 ${key}。`);
@@ -89,9 +107,11 @@ function normalizeFile(value: unknown, source: string): ReviewConfigFile {
     apiKeyEnv: readString(record.apiKeyEnv, `${source}.apiKeyEnv`),
     model: readString(record.model, `${source}.model`),
     skipCommands: readSkipCommands(record.skipCommands, source),
+    auditLogEnabled: readBoolean(record.auditLogEnabled, `${source}.auditLogEnabled`),
+    thinkingEnabled: readBoolean(record.thinkingEnabled, `${source}.thinkingEnabled`),
   };
-}
 
+}
 function normalizePluginSettings(settings: Record<string, unknown>): ReviewConfigFile {
   return {
     endpointUrl: readString(settings.endpointUrl, "plugin.endpointUrl"),
@@ -99,6 +119,8 @@ function normalizePluginSettings(settings: Record<string, unknown>): ReviewConfi
     apiKey: readString(settings.apiKey, "plugin.apiKey"),
     model: readString(settings.model, "plugin.model"),
     skipCommands: readSkipCommands(settings.skipCommands, "plugin"),
+    auditLogEnabled: readBoolean(settings.auditLogEnabled, "plugin.auditLogEnabled"),
+    thinkingEnabled: readBoolean(settings.thinkingEnabled, "plugin.thinkingEnabled"),
   };
 }
 function mergeConfigFiles(...sources: ReviewConfigFile[]): ReviewConfigFile {
@@ -147,6 +169,8 @@ export async function loadReviewConfig(
     apiKey: readString(env[ENV_KEYS.apiKey], "环境变量 OMP_COMMAND_REVIEW_API_KEY"),
     model: readString(env[ENV_KEYS.model], "环境变量 OMP_COMMAND_REVIEW_MODEL"),
     skipCommands: readSkipCommands(env[ENV_KEYS.skipCommands], "环境变量"),
+    auditLogEnabled: readBoolean(env[ENV_KEYS.auditLogEnabled], "环境变量 OMP_COMMAND_REVIEW_AUDIT_LOG"),
+    thinkingEnabled: readBoolean(env[ENV_KEYS.thinkingEnabled], "环境变量 OMP_COMMAND_REVIEW_THINKING"),
   };
   const merged = mergeConfigFiles(environment, normalizePluginSettings(pluginSettings), globalFile, projectFile);
   return {
@@ -155,5 +179,7 @@ export async function loadReviewConfig(
     apiKey: resolveApiKey(merged.apiKey, merged.apiKeyEnv, env),
     model: merged.model,
     skipCommands: merged.skipCommands ?? [],
+    auditLogEnabled: merged.auditLogEnabled ?? false,
+    thinkingEnabled: merged.thinkingEnabled ?? false,
   };
 }

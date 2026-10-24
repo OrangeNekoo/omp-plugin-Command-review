@@ -41,6 +41,42 @@ skipCommands:
 - `apiKeyEnv`：从指定环境变量读取 key，推荐使用。
 - `skipCommands`：glob 字符串数组，也支持逗号或换行分隔的字符串。
 
+- `auditLogEnabled`：是否记录审核日志，默认 `false`。
+- `thinkingEnabled`：是否启用审核模型思考模式，默认 `false`。
+
+启用审核日志后，插件将每条实际发送给审核模型的命令及审核结果追加写入当前项目：
+
+```text
+<项目>/.omp/command-review-audit.jsonl
+```
+
+每行是一个 JSON 对象，包含时间、命令、API 格式、模型、是否启用思考、风险、原因和最终结果。日志默认关闭；日志写入失败不会放行或阻止命令，也不会影响审核流程。
+
+配置文件示例：
+
+```yaml
+auditLogEnabled: true
+thinkingEnabled: false
+```
+
+命令配置：
+
+```sh
+omp-zh plugin config set omp-command-review auditLogEnabled true
+omp-zh plugin config set omp-command-review thinkingEnabled true
+```
+
+环境变量：
+
+```sh
+export OMP_COMMAND_REVIEW_AUDIT_LOG=true
+export OMP_COMMAND_REVIEW_THINKING=true
+```
+
+思考模式使用 omp-zh 内置 `@oh-my-pi/pi-ai` 的自动策略：启用时不发送显式 effort，由服务端使用默认思考策略；`openai-responses` 使用服务端默认的 `reasoning` 行为，`openai-completions` 使用服务端默认的 `reasoning_effort` 行为。关闭时使用对应 API 的关闭推理参数，不直接拼接请求 JSON，因此两种 API 格式保持兼容。具体思考强度由审核服务和模型决定，不固定为 low/medium/high。
+
+注意：审核日志可能包含命令中的路径、参数和敏感数据。启用前确认当前项目允许保存这些内容，并将 `.omp/command-review-audit.jsonl` 加入项目的忽略规则。
+
 也可以用 `${ENV_NAME}` 形式配置密钥：
 
 ```yaml

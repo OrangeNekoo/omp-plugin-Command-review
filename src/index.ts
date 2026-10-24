@@ -9,6 +9,7 @@ import {
   isReadOnlyCommand,
   parseReviewDecision,
 } from "./policy";
+import { appendAuditRecord, type AuditRecord } from "./audit";
 import { loadReviewConfig, type ReviewConfig } from "./config";
 
 const PLUGIN_NAME = "omp-command-review";
@@ -35,7 +36,7 @@ function createReviewModel(endpointUrl: string, api: "openai-responses" | "opena
     api,
     provider: PLUGIN_NAME,
     baseUrl: url.toString().replace(/\/$/, ""),
-    reasoning: false,
+    reasoning: true,
     input: ["text"],
     supportsTools: false,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -60,7 +61,11 @@ async function reviewCommand(
       systemPrompt: SYSTEM_PROMPT,
       messages: [{ role: "user", content: `Classify this shell command:\n${JSON.stringify(command)}`, timestamp: Date.now() }],
     },
-    { apiKey: settings.apiKey, maxTokens: 256 },
+    {
+      apiKey: settings.apiKey,
+      maxTokens: 256,
+      ...(settings.thinkingEnabled ? {} : { disableReasoning: true }),
+    }
   );
   if (response.stopReason !== "stop") throw new Error("审核模型未返回完整结果。");
   const text = response.content
@@ -70,6 +75,23 @@ async function reviewCommand(
   const decision = parseReviewDecision(text);
   if (!decision) throw new Error("审核模型响应格式无效。");
   return decision;
+}
+
+async function recordAudit(
+  cwd: string,
+  settings: ReviewConfig,
+  command: string,
+  record: Omit<AuditRecord, "timestamp" | "command" | "api" | "model" | "thinkingEnabled">,
+): Promise<void> {
+  if (!settings.auditLogEnabled || !settings.model) return;
+  await appendAuditRecord(cwd, {
+    ...record,
+    timestamp: new Date().toISOString(),
+    command,
+    api: settings.api,
+    model: settings.model,
+    thinkingEnabled: settings.thinkingEnabled,
+  });
 }
 
 export default function commandReviewExtension(pi: ExtensionAPI): void {
@@ -105,10 +127,15 @@ export default function commandReviewExtension(pi: ExtensionAPI): void {
         "审核模型未返回完整结果。",
         "审核模型响应格式无效。",
       ].includes(message) ? message : "审核服务暂不可用或配置无效。";
+      await recordAudit(ctx.cwd, settings, command, { risk: "unknown", outcome: "error", error: safeMessage });
       return { block: true, reason: `命令审核失败，已按安全策略阻止执行：${safeMessage}` };
     }
-    if (decision.risk === "low") return;
+    if (decision.risk === "low") {
+      await recordAudit(ctx.cwd, settings, command, { risk: "low", reason: decision.reason, outcome: "allowed" });
+      return;
+    }
     if (!ctx.hasUI) {
+      await recordAudit(ctx.cwd, settings, command, { risk: "high", reason: decision.reason, outcome: "blocked" });
       return { block: true, reason: `检测到高危命令，当前没有交互式确认界面，已阻止执行：${decision.reason}` };
     }
 
@@ -116,6 +143,11 @@ export default function commandReviewExtension(pi: ExtensionAPI): void {
       "高危命令审核",
       `风险说明：${decision.reason}\n\n即将执行：\n${command}\n\n是否继续执行？`,
     );
+    await recordAudit(ctx.cwd, settings, command, {
+      risk: "high",
+      reason: decision.reason,
+      outcome: approved ? "allowed" : "blocked",
+    });
     if (!approved) return { block: true, reason: "用户拒绝或未确认高危命令。" };
   });
 }

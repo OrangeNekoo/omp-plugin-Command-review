@@ -55,6 +55,40 @@ describe("review config files", () => {
     expect(config.apiKey).toBe("project-secret");
   });
 
+  test("reads disabled audit logging and thinking by default", async () => {
+    const { home, cwd } = await makeConfigHome();
+
+    const config = await loadReviewConfig(cwd, {}, { home, env: {} });
+
+    expect(config.auditLogEnabled).toBe(false);
+    expect(config.thinkingEnabled).toBe(false);
+  });
+
+  test("merges audit logging and thinking settings from plugin, global, and project sources", async () => {
+    const { home, cwd } = await makeConfigHome();
+    await mkdir(path.join(home, ".omp", "agent"), { recursive: true });
+    await mkdir(path.join(cwd, ".omp"), { recursive: true });
+    await writeFile(path.join(home, ".omp", "agent", "command-review.yml"), "auditLogEnabled: true\nthinkingEnabled: false\n");
+    await writeFile(path.join(cwd, ".omp", "command-review.yml"), "thinkingEnabled: true\n");
+
+    const config = await loadReviewConfig(
+      cwd,
+      { auditLogEnabled: false, thinkingEnabled: false },
+      { home, env: { OMP_COMMAND_REVIEW_AUDIT_LOG: "true" } },
+    );
+
+    expect(config.auditLogEnabled).toBe(true);
+    expect(config.thinkingEnabled).toBe(true);
+  });
+
+  test("rejects invalid boolean configuration", async () => {
+    const { home, cwd } = await makeConfigHome();
+    await mkdir(path.join(cwd, ".omp"), { recursive: true });
+    await writeFile(path.join(cwd, ".omp", "command-review.yml"), "thinkingEnabled: maybe\n");
+
+    await expect(loadReviewConfig(cwd, {}, { home, env: {} })).rejects.toThrow("thinkingEnabled");
+  });
+
   test("uses apiKeyEnv and full environment placeholders without persisting secrets", async () => {
     const { home, cwd } = await makeConfigHome();
     await mkdir(path.join(cwd, ".omp"), { recursive: true });

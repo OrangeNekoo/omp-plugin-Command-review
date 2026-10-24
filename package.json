@@ -49,6 +49,18 @@
         "type": "string",
         "description": "跳过审核的 glob 命令，使用逗号或换行分隔。",
         "env": "OMP_COMMAND_REVIEW_SKIP_COMMANDS"
+      },
+      "auditLogEnabled": {
+        "type": "boolean",
+        "default": false,
+        "description": "是否将发送给审核模型的命令和审核结果记录到当前项目的 .omp/command-review-audit.jsonl。",
+        "env": "OMP_COMMAND_REVIEW_AUDIT_LOG"
+      },
+      "thinkingEnabled": {
+        "type": "boolean",
+        "default": false,
+        "description": "是否为审核模型启用自动思考模式；Responses 和 Chat Completions 由 omp 自动映射。",
+        "env": "OMP_COMMAND_REVIEW_THINKING"
       }
     }
   }
