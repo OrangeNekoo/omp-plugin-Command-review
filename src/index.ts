@@ -9,6 +9,7 @@ import {
   isReadOnlyCommand,
   parseReviewDecision,
 } from "./policy";
+import { confirmHighRiskCommand } from "./confirmation";
 import { appendAuditRecord, type AuditRecord } from "./audit";
 import { getReviewTimeoutBudgetMs, loadReviewConfig, type ReviewConfig } from "./config";
 
@@ -160,7 +161,8 @@ export default function commandReviewExtension(pi: ExtensionAPI): void {
       return { block: true, reason: `检测到高危命令，当前没有交互式确认界面，已阻止执行：${decision.reason}` };
     }
 
-    const approved = await ctx.ui.confirm(
+    const approved = await confirmHighRiskCommand(
+      ctx.ui,
       "高危命令审核",
       `风险说明：${decision.reason}\n\n即将执行：\n${command}\n\n是否继续执行？`,
     );
