@@ -14,7 +14,40 @@ omp-zh plugin install .
 
 ## 配置审核模型
 
-在安装插件的目录运行以下命令；URL 使用 OpenAI-compatible API 根路径（通常以 `/v1` 结尾）：
+插件支持配置文件、`omp-zh plugin config` 和环境变量。配置文件优先级高于命令设置：项目文件 > 全局文件 > `omp-zh plugin config` > 环境变量 > 默认值。
+
+全局配置文件：`~/.omp/agent/command-review.yml`
+
+项目配置文件：`<项目>/.omp/command-review.yml`
+
+示例：
+
+```yaml
+endpointUrl: https://api.example.com/v1
+api: chat-completions
+model: gpt-4o-mini
+apiKeyEnv: OMP_COMMAND_REVIEW_API_KEY
+skipCommands:
+  - "npm test*"
+  - "pnpm lint"
+```
+
+支持的字段：
+
+- `endpointUrl`：OpenAI-compatible API 根 URL。
+- `api`：`chat-completions` 或 `responses`。
+- `model`：审核模型 ID。
+- `apiKey`：直接配置 key；不推荐写入文件。
+- `apiKeyEnv`：从指定环境变量读取 key，推荐使用。
+- `skipCommands`：glob 字符串数组，也支持逗号或换行分隔的字符串。
+
+也可以用 `${ENV_NAME}` 形式配置密钥：
+
+```yaml
+apiKey: ${OMP_COMMAND_REVIEW_API_KEY}
+```
+
+命令配置方式仍然兼容：
 
 ```sh
 omp-zh plugin config set omp-command-review endpointUrl https://api.example.com/v1
@@ -23,7 +56,7 @@ omp-zh plugin config set omp-command-review model your-model-id
 omp-zh plugin config set omp-command-review apiKey 'your-api-key'
 ```
 
-`api` 支持 `chat-completions` 和 `responses`。API key 作为 secret setting 保存，配置 CLI 会遮蔽其值。也可以通过环境变量设置 URL、模型和 key：
+环境变量示例：
 
 ```sh
 export OMP_COMMAND_REVIEW_URL='https://api.example.com/v1'
@@ -31,7 +64,7 @@ export OMP_COMMAND_REVIEW_MODEL='your-model-id'
 export OMP_COMMAND_REVIEW_API_KEY='your-api-key'
 ```
 
-API 格式可通过插件设置 `api` 配置；默认为 `chat-completions`。插件复用 omp-zh 使用的 `@oh-my-pi/pi-ai` `completeSimple`，发送单轮、无工具调用的 JSON 分类请求，不附带项目文件或会话历史。
+插件使用 omp-zh 复用的 `@oh-my-pi/pi-ai` `completeSimple`，发送单轮、无工具调用的 JSON 分类请求，不附带项目文件或会话历史。
 
 ## 审核行为
 

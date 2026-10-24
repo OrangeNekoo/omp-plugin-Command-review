@@ -1,0 +1,159 @@
+import os from "node:os";
+import path from "node:path";
+import { YAML } from "bun";
+import { parseSkipPatterns } from "./policy";
+
+export type ReviewApi = "responses" | "chat-completions";
+
+export interface ReviewConfig {
+  endpointUrl?: string;
+  api: ReviewApi;
+  apiKey?: string;
+  model?: string;
+  skipCommands: string[];
+}
+
+interface ReviewConfigFile {
+  endpointUrl?: string;
+  api?: ReviewApi;
+  apiKey?: string;
+  apiKeyEnv?: string;
+  model?: string;
+  skipCommands?: string[];
+}
+
+// Files are intentionally separate from omp's main config to keep this plugin's schema isolated.
+// Project configuration wins over global configuration; both win over plugin-manager settings.
+const CONFIG_FILE_NAME = "command-review.yml";
+
+interface ReviewConfigLoadOptions {
+  home?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+const DEFAULT_API: ReviewApi = "chat-completions";
+const ENV_KEYS = {
+  endpointUrl: "OMP_COMMAND_REVIEW_URL",
+  api: "OMP_COMMAND_REVIEW_API",
+  apiKey: "OMP_COMMAND_REVIEW_API_KEY",
+  model: "OMP_COMMAND_REVIEW_MODEL",
+  skipCommands: "OMP_COMMAND_REVIEW_SKIP_COMMANDS",
+} as const;
+
+
+function readString(value: unknown, field: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") throw new Error(`配置字段 ${field} 必须是字符串。`);
+  const normalized = value.trim();
+  return normalized || undefined;
+}
+
+function readApi(value: unknown, source: string): ReviewApi | undefined {
+  const normalized = readString(value, `${source}.api`);
+  if (normalized === undefined) return undefined;
+  if (normalized !== "responses" && normalized !== "chat-completions") {
+    throw new Error(`${source}.api 必须是 responses 或 chat-completions。`);
+  }
+  return normalized;
+}
+
+function readSkipCommands(value: unknown, source: string): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") return parseSkipPatterns(value);
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`配置字段 ${source}.skipCommands 必须是字符串或字符串数组。`);
+  }
+  return value.map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizeFile(value: unknown, source: string): ReviewConfigFile {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${source} 必须是 YAML 对象。`);
+  }
+  const record = value as Record<string, unknown>;
+  const allowed: Record<string, true> = {
+    endpointUrl: true,
+    api: true,
+    apiKey: true,
+    apiKeyEnv: true,
+    model: true,
+    skipCommands: true,
+  };
+  for (const key of Object.keys(record)) {
+    if (!allowed[key]) throw new Error(`${source} 包含未知字段 ${key}。`);
+  }
+  return {
+    endpointUrl: readString(record.endpointUrl, `${source}.endpointUrl`),
+    api: readApi(record.api, source),
+    apiKey: readString(record.apiKey, `${source}.apiKey`),
+    apiKeyEnv: readString(record.apiKeyEnv, `${source}.apiKeyEnv`),
+    model: readString(record.model, `${source}.model`),
+    skipCommands: readSkipCommands(record.skipCommands, source),
+  };
+}
+
+function normalizePluginSettings(settings: Record<string, unknown>): ReviewConfigFile {
+  return {
+    endpointUrl: readString(settings.endpointUrl, "plugin.endpointUrl"),
+    api: readApi(settings.api, "plugin"),
+    apiKey: readString(settings.apiKey, "plugin.apiKey"),
+    model: readString(settings.model, "plugin.model"),
+    skipCommands: readSkipCommands(settings.skipCommands, "plugin"),
+  };
+}
+function mergeConfigFiles(...sources: ReviewConfigFile[]): ReviewConfigFile {
+  const merged: ReviewConfigFile = {};
+  for (const source of sources) {
+    for (const [key, value] of Object.entries(source)) {
+      if (value === undefined) continue;
+      if (key === "apiKey") delete merged.apiKeyEnv;
+      if (key === "apiKeyEnv") delete merged.apiKey;
+      Object.assign(merged, { [key]: value });
+    }
+  }
+  return merged;
+}
+
+
+async function readConfigFile(filePath: string): Promise<ReviewConfigFile> {
+  if (!(await Bun.file(filePath).exists())) return {};
+  const source = await Bun.file(filePath).text();
+  return normalizeFile(YAML.parse(source), filePath);
+}
+
+function resolveApiKey(apiKey: string | undefined, apiKeyEnv: string | undefined, env: NodeJS.ProcessEnv): string | undefined {
+  const placeholder = apiKey?.match(/^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/)?.[1];
+  const environmentName = apiKeyEnv ?? placeholder;
+  if (environmentName) {
+    const value = env[environmentName]?.trim();
+    if (!value) throw new Error(`审核模型 API key 环境变量 ${environmentName} 未设置。`);
+    return value;
+  }
+  return apiKey;
+}
+
+export async function loadReviewConfig(
+  cwd: string,
+  pluginSettings: Record<string, unknown>,
+  options: ReviewConfigLoadOptions = {},
+): Promise<ReviewConfig> {
+  const env = options.env ?? process.env;
+  const home = options.home ?? os.homedir();
+  const globalFile = await readConfigFile(path.join(home, ".omp", "agent", CONFIG_FILE_NAME));
+  const projectFile = await readConfigFile(path.join(cwd, ".omp", CONFIG_FILE_NAME));
+  const environment: ReviewConfigFile = {
+    endpointUrl: readString(env[ENV_KEYS.endpointUrl], "环境变量 OMP_COMMAND_REVIEW_URL"),
+    api: readApi(env[ENV_KEYS.api], "环境变量 OMP_COMMAND_REVIEW_API"),
+    apiKey: readString(env[ENV_KEYS.apiKey], "环境变量 OMP_COMMAND_REVIEW_API_KEY"),
+    model: readString(env[ENV_KEYS.model], "环境变量 OMP_COMMAND_REVIEW_MODEL"),
+    skipCommands: readSkipCommands(env[ENV_KEYS.skipCommands], "环境变量"),
+  };
+  const merged = mergeConfigFiles(environment, normalizePluginSettings(pluginSettings), globalFile, projectFile);
+  return {
+    endpointUrl: merged.endpointUrl,
+    api: merged.api ?? DEFAULT_API,
+    apiKey: resolveApiKey(merged.apiKey, merged.apiKeyEnv, env),
+    model: merged.model,
+    skipCommands: merged.skipCommands ?? [],
+  };
+}
