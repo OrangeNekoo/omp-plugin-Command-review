@@ -63,6 +63,32 @@ describe("review config files", () => {
     expect(config.auditLogEnabled).toBe(false);
     expect(config.thinkingEnabled).toBe(false);
   });
+
+  test("enables review notifications by default", async () => {
+    const { home, cwd } = await makeConfigHome();
+
+    const config = await loadReviewConfig(cwd, {}, { home, env: {} });
+
+    expect(config.notifyEnabled).toBe(true);
+  });
+
+  test("reads the review notification switch from the project configuration", async () => {
+    const { home, cwd } = await makeConfigHome();
+    await mkdir(path.join(cwd, ".omp"), { recursive: true });
+    await writeFile(path.join(cwd, ".omp", "command-review.yml"), "notifyEnabled: false\n");
+
+    const config = await loadReviewConfig(cwd, {}, { home, env: {} });
+
+    expect(config.notifyEnabled).toBe(false);
+  });
+
+  test("reads the review notification switch from the environment", async () => {
+    const { home, cwd } = await makeConfigHome();
+
+    const config = await loadReviewConfig(cwd, {}, { home, env: { OMP_COMMAND_REVIEW_NOTIFY_ENABLED: "false" } });
+
+    expect(config.notifyEnabled).toBe(false);
+  });
   test("uses a bounded review timeout by default", async () => {
     const { home, cwd } = await makeConfigHome();
 

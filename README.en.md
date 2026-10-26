@@ -29,7 +29,8 @@ flowchart TD
   E -- pass --> P
   E -- fail --> F{interactive UI}
   F -- no --> X[block, reason returned to model]
-  F -- yes --> G{user choice}
+  F -- yes --> N[send wait-for-choice notification if enabled]
+  N --> G{user choice}
   G -- yes --> P
   G -- no or cancelled --> X
   E -- error or timeout --> X
@@ -77,6 +78,7 @@ An unknown field or a type error does not fall back to permissive defaults; the 
 | `auditLogEnabled` | boolean | `false` | Write audit records to a JSON log inside the project. |
 | `thinkingEnabled` | boolean | `false` | Reasoning mode; applies to `chat-completions` and `responses` only. |
 | `reviewTimeoutMs` | number | `20000` | Review request timeout in milliseconds; the host hook budget may shorten it (see [Timeout](#timeout)). |
+| `notifyEnabled` | boolean | `true` | Send a terminal notification when the review fails and the user must choose; the host's `ask.notify` setting also applies (see [Notifications](#notifications)). |
 
 ### Full example
 
@@ -88,6 +90,7 @@ apiKeyEnv: OMP_COMMAND_REVIEW_API_KEY
 auditLogEnabled: true
 thinkingEnabled: false
 reviewTimeoutMs: 20000
+notifyEnabled: true
 skipCommands:
   - "read"
   - "grep"
@@ -179,6 +182,19 @@ extensionHandlers:
 reviewTimeoutMs: 45000
 ```
 
+## Notifications
+
+When the review fails, the plugin shows a yes/no confirmation. With `notifyEnabled` set to `true` (the default), the plugin sends a terminal notification before opening that confirmation, so a user who stepped away from the terminal still learns that a command is waiting for a decision.
+
+The notification reuses omp-zh's native terminal notification channel, the same one the `ask` tool uses while waiting for input: terminals supporting OSC 99 get a `focus` action (the notification can bring the session forward), and everything else falls back to a single line of text or a bell. Nothing is sent when the host reports a headless terminal or when `PI_NOTIFICATIONS` is `off`.
+
+The host's `ask.notify` setting also applies: `off` suppresses the notification, `on` (the default) or an unset value sends it.
+
+```yaml
+# <project>/.omp/command-review.yml
+notifyEnabled: false
+```
+
 ## Logging
 
 With `auditLogEnabled: true` every reviewed call and its outcome is written inside the current project:
@@ -222,6 +238,7 @@ Logs can contain commands, paths, arguments, and file fragments. Confirm the pro
 | `OMP_COMMAND_REVIEW_AUDIT_LOG` | `auditLogEnabled` |
 | `OMP_COMMAND_REVIEW_THINKING` | `thinkingEnabled` |
 | `OMP_COMMAND_REVIEW_TIMEOUT_MS` | `reviewTimeoutMs` |
+| `OMP_COMMAND_REVIEW_NOTIFY_ENABLED` | `notifyEnabled` |
 
 ```sh
 export OMP_COMMAND_REVIEW_URL='https://api.example.com/v1'
@@ -241,6 +258,7 @@ omp-zh plugin config set omp-command-review apiKey 'your-api-key'
 omp-zh plugin config set omp-command-review auditLogEnabled true
 omp-zh plugin config set omp-command-review thinkingEnabled true
 omp-zh plugin config set omp-command-review reviewTimeoutMs 20000
+omp-zh plugin config set omp-command-review notifyEnabled false
 omp-zh plugin config set omp-command-review skipCommands 'read,grep,glob,edit,write,npm test*'
 ```
 
@@ -272,6 +290,7 @@ bun run typecheck   # type check
 | `src/policy.ts` | Read-only detection, glob skip matching, verdict parsing |
 | `src/audit.ts` | Writes the JSON array log |
 | `src/confirmation.ts` | Interactive confirmation dialog |
+| `src/notification.ts` | Terminal notification for the wait-for-choice state, and the host's `ask.notify` switch |
 | `src/errors.ts` | Error types returned to the caller |
 
 ## [License](LICENSE)

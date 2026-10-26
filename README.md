@@ -31,7 +31,8 @@ flowchart TD
   E -- 通过 --> P
   E -- 不通过 --> F{存在交互界面}
   F -- 否 --> X[阻止，原因回传给模型]
-  F -- 是 --> G{用户选择}
+  F -- 是 --> N[按开关推送等待选择通知]
+  N --> G{用户选择}
   G -- 是 --> P
   G -- 否或被取消 --> X
   E -- 失败或超时 --> X
@@ -79,6 +80,7 @@ omp-zh --extension /绝对路径/omp-plugin-Command-review
 | `auditLogEnabled` | boolean | `false` | 是否把审核记录写入项目内的 JSON 日志。 |
 | `thinkingEnabled` | boolean | `false` | 是否启用模型思考模式；仅对 `chat-completions` 与 `responses` 生效。 |
 | `reviewTimeoutMs` | number | `20000` | 审核请求超时毫秒数，实际取值受宿主钩子预算压缩（见[超时](#超时)）。 |
+| `notifyEnabled` | boolean | `true` | 审核未通过、等待用户选择时是否推送终端通知；同时受 omp 的 `ask.notify` 约束（见[通知](#通知)）。 |
 
 ### 完整示例
 
@@ -90,6 +92,7 @@ apiKeyEnv: OMP_COMMAND_REVIEW_API_KEY
 auditLogEnabled: true
 thinkingEnabled: false
 reviewTimeoutMs: 20000
+notifyEnabled: true
 skipCommands:
   - "read"
   - "grep"
@@ -181,6 +184,19 @@ extensionHandlers:
 reviewTimeoutMs: 45000
 ```
 
+## 通知
+
+审核未通过时，插件会弹出「是 / 否」确认框。`notifyEnabled` 为 `true`（默认）时，插件在弹出确认框前推送一条终端通知，让离开终端的用户也能知道有命令在等确认。
+
+通知复用 omp-zh 原生的终端通知通道，与 `ask` 工具等待输入时的通知同源：终端支持 OSC 99 时带 `focus` 动作（可在通知上直接聚焦会话），否则退化为一行文本或响铃；宿主判定为无头终端、或 `PI_NOTIFICATIONS` 为 `off` 时不发送。
+
+推送还受宿主 `ask.notify` 设置约束：该设置为 `off` 时不发送，`on`（默认）或未设置时发送。
+
+```yaml
+# <项目>/.omp/command-review.yml
+notifyEnabled: false
+```
+
 ## 日志
 
 `auditLogEnabled: true` 时，插件把每次实际送审的调用与结论写入当前项目：
@@ -224,6 +240,7 @@ reviewTimeoutMs: 45000
 | `OMP_COMMAND_REVIEW_AUDIT_LOG` | `auditLogEnabled` |
 | `OMP_COMMAND_REVIEW_THINKING` | `thinkingEnabled` |
 | `OMP_COMMAND_REVIEW_TIMEOUT_MS` | `reviewTimeoutMs` |
+| `OMP_COMMAND_REVIEW_NOTIFY_ENABLED` | `notifyEnabled` |
 
 ```sh
 export OMP_COMMAND_REVIEW_URL='https://api.example.com/v1'
@@ -243,6 +260,7 @@ omp-zh plugin config set omp-command-review apiKey 'your-api-key'
 omp-zh plugin config set omp-command-review auditLogEnabled true
 omp-zh plugin config set omp-command-review thinkingEnabled true
 omp-zh plugin config set omp-command-review reviewTimeoutMs 20000
+omp-zh plugin config set omp-command-review notifyEnabled false
 omp-zh plugin config set omp-command-review skipCommands 'read,grep,glob,edit,write,npm test*'
 ```
 
@@ -276,6 +294,7 @@ bun run typecheck   # 类型检查
 | `src/policy.ts` | 只读命令识别、glob 跳过匹配、结论解析 |
 | `src/audit.ts` | 写入 JSON 数组日志 |
 | `src/confirmation.ts` | 交互确认框 |
+| `src/notification.ts` | 等待用户选择时的终端通知，并读取宿主 `ask.notify` 开关 |
 | `src/errors.ts` | 可回传的错误类型 |
 
 ## [开源协议](LICENSE)

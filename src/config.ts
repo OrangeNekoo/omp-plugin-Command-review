@@ -15,6 +15,7 @@ export interface ReviewConfig {
   auditLogEnabled: boolean;
   thinkingEnabled: boolean;
   reviewTimeoutMs: number;
+  notifyEnabled: boolean;
 }
 
 interface ReviewConfigFile {
@@ -27,6 +28,7 @@ interface ReviewConfigFile {
   auditLogEnabled?: boolean;
   thinkingEnabled?: boolean;
   reviewTimeoutMs?: number;
+  notifyEnabled?: boolean;
 }
 
 
@@ -50,6 +52,7 @@ const ENV_KEYS = {
   auditLogEnabled: "OMP_COMMAND_REVIEW_AUDIT_LOG",
   thinkingEnabled: "OMP_COMMAND_REVIEW_THINKING",
   reviewTimeoutMs: "OMP_COMMAND_REVIEW_TIMEOUT_MS",
+  notifyEnabled: "OMP_COMMAND_REVIEW_NOTIFY_ENABLED",
 } as const;
 
 
@@ -117,6 +120,7 @@ function normalizeFile(value: unknown, source: string): ReviewConfigFile {
     auditLogEnabled: true,
     thinkingEnabled: true,
     reviewTimeoutMs: true,
+    notifyEnabled: true,
   };
   for (const key of Object.keys(record)) {
     if (!allowed[key]) throw new Error(`${source} 包含未知字段 ${key}。`);
@@ -131,6 +135,7 @@ function normalizeFile(value: unknown, source: string): ReviewConfigFile {
     auditLogEnabled: readBoolean(record.auditLogEnabled, `${source}.auditLogEnabled`),
     thinkingEnabled: readBoolean(record.thinkingEnabled, `${source}.thinkingEnabled`),
     reviewTimeoutMs: readPositiveInteger(record.reviewTimeoutMs, `${source}.reviewTimeoutMs`),
+    notifyEnabled: readBoolean(record.notifyEnabled, `${source}.notifyEnabled`),
   };
 
 }
@@ -144,6 +149,7 @@ function normalizePluginSettings(settings: Record<string, unknown>): ReviewConfi
     auditLogEnabled: readBoolean(settings.auditLogEnabled, "plugin.auditLogEnabled"),
     thinkingEnabled: readBoolean(settings.thinkingEnabled, "plugin.thinkingEnabled"),
     reviewTimeoutMs: readPositiveInteger(settings.reviewTimeoutMs, "plugin.reviewTimeoutMs"),
+    notifyEnabled: readBoolean(settings.notifyEnabled, "plugin.notifyEnabled"),
   };
 }
 function mergeConfigFiles(...sources: ReviewConfigFile[]): ReviewConfigFile {
@@ -195,6 +201,7 @@ export async function loadReviewConfig(
     auditLogEnabled: readBoolean(env[ENV_KEYS.auditLogEnabled], "环境变量 OMP_COMMAND_REVIEW_AUDIT_LOG"),
     thinkingEnabled: readBoolean(env[ENV_KEYS.thinkingEnabled], "环境变量 OMP_COMMAND_REVIEW_THINKING"),
     reviewTimeoutMs: readPositiveInteger(env[ENV_KEYS.reviewTimeoutMs], "环境变量 OMP_COMMAND_REVIEW_TIMEOUT_MS"),
+    notifyEnabled: readBoolean(env[ENV_KEYS.notifyEnabled], "环境变量 OMP_COMMAND_REVIEW_NOTIFY_ENABLED"),
   };
   const merged = mergeConfigFiles(environment, normalizePluginSettings(pluginSettings), globalFile, projectFile);
   return {
@@ -206,5 +213,6 @@ export async function loadReviewConfig(
     auditLogEnabled: merged.auditLogEnabled ?? false,
     thinkingEnabled: merged.thinkingEnabled ?? false,
     reviewTimeoutMs: merged.reviewTimeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS,
+    notifyEnabled: merged.notifyEnabled ?? true,
   };
 }

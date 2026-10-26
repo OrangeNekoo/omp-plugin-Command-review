@@ -1,6 +1,6 @@
 {
   "name": "omp-command-review",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "在 oh-my-pi yolo 模式下审查所有工具调用，使用自定义 OpenAI-compatible 或 jev 审核模型，未通过时交用户判断。",
   "type": "module",
   "files": [
@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@oh-my-pi/pi-ai": "^18.12.6",
-    "@oh-my-pi/pi-catalog": "^18.12.6"
+    "@oh-my-pi/pi-catalog": "^18.12.6",
+    "@oh-my-pi/pi-tui": "^18.12.6"
   },
   "peerDependencies": {
     "@oh-my-pi/pi-coding-agent": ">=18.12.6"
@@ -80,6 +81,12 @@
         "default": 20000,
         "description": "审核模型请求超时毫秒数；实际值会低于 omp 扩展钩子期限以便 fail-closed 阻断并记录日志。",
         "env": "OMP_COMMAND_REVIEW_TIMEOUT_MS"
+      },
+      "notifyEnabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "审核未通过并等待用户选择时，是否向终端推送通知；同时受 omp 的 ask.notify 设置约束。",
+        "env": "OMP_COMMAND_REVIEW_NOTIFY_ENABLED"
       }
     }
   }
