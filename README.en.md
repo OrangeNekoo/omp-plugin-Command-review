@@ -79,6 +79,7 @@ An unknown field or a type error does not fall back to permissive defaults; the 
 | `thinkingEnabled` | boolean | `false` | Reasoning mode; applies to `chat-completions` and `responses` only. |
 | `reviewTimeoutMs` | number | `20000` | Review request timeout in milliseconds; the host hook budget may shorten it (see [Timeout](#timeout)). |
 | `notifyEnabled` | boolean | `true` | Send a terminal notification when the review fails and the user must choose; the host's `ask.notify` setting also applies (see [Notifications](#notifications)). |
+| `language` | enum | `zh-CN` | Language of the user-facing prompts: `zh-CN` for Simplified Chinese, `en` for English (see [Language](#language)). |
 
 ### Full example
 
@@ -91,6 +92,7 @@ auditLogEnabled: true
 thinkingEnabled: false
 reviewTimeoutMs: 20000
 notifyEnabled: true
+language: zh-CN
 skipCommands:
   - "read"
   - "grep"
@@ -99,6 +101,7 @@ skipCommands:
   - "write"
   - "npm test*"
   - "pnpm lint"
+  - "ask"
 ```
 
 ### How skipping matches
@@ -195,6 +198,19 @@ The host's `ask.notify` setting also applies: `off` suppresses the notification,
 notifyEnabled: false
 ```
 
+## Language
+
+`language` picks the language of the user-facing prompts: `zh-CN` (the default) shows Simplified Chinese, `en` shows English. Once switched, the confirmation dialog's title and options, the terminal notification body, and the reason handed back to the model all follow.
+
+The language only affects what the user reads. The prompt sent to the review model and the JEV criteria stay the same, so the review behaves identically in either language.
+
+The value must be `zh-CN` or `en`; anything else makes the plugin block the call under its fail-closed policy instead of silently falling back to the default.
+
+```yaml
+# <project>/.omp/command-review.yml
+language: en
+```
+
 ## Logging
 
 With `auditLogEnabled: true` every reviewed call and its outcome is written inside the current project:
@@ -239,6 +255,7 @@ Logs can contain commands, paths, arguments, and file fragments. Confirm the pro
 | `OMP_COMMAND_REVIEW_THINKING` | `thinkingEnabled` |
 | `OMP_COMMAND_REVIEW_TIMEOUT_MS` | `reviewTimeoutMs` |
 | `OMP_COMMAND_REVIEW_NOTIFY_ENABLED` | `notifyEnabled` |
+| `OMP_COMMAND_REVIEW_LANGUAGE` | `language` |
 
 ```sh
 export OMP_COMMAND_REVIEW_URL='https://api.example.com/v1'
@@ -259,6 +276,7 @@ omp-zh plugin config set omp-command-review auditLogEnabled true
 omp-zh plugin config set omp-command-review thinkingEnabled true
 omp-zh plugin config set omp-command-review reviewTimeoutMs 20000
 omp-zh plugin config set omp-command-review notifyEnabled false
+omp-zh plugin config set omp-command-review language en
 omp-zh plugin config set omp-command-review skipCommands 'read,grep,glob,edit,write,npm test*'
 ```
 
@@ -291,6 +309,8 @@ bun run typecheck   # type check
 | `src/audit.ts` | Writes the JSON array log |
 | `src/confirmation.ts` | Interactive confirmation dialog |
 | `src/notification.ts` | Terminal notification for the wait-for-choice state, and the host's `ask.notify` switch |
+| `src/i18n.ts` | Chinese and English message catalogues, and language resolution |
+| `src/format.ts` | Layout of the pending command in the confirmation dialog |
 | `src/errors.ts` | Error types returned to the caller |
 
 ## [License](LICENSE)

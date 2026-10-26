@@ -1,6 +1,6 @@
 {
   "name": "omp-command-review",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "在 oh-my-pi yolo 模式下审查所有工具调用，使用自定义 OpenAI-compatible 或 jev 审核模型，未通过时交用户判断。",
   "type": "module",
   "files": [
@@ -87,6 +87,16 @@
         "default": true,
         "description": "审核未通过并等待用户选择时，是否向终端推送通知；同时受 omp 的 ask.notify 设置约束。",
         "env": "OMP_COMMAND_REVIEW_NOTIFY_ENABLED"
+      },
+      "language": {
+        "type": "enum",
+        "values": [
+          "zh-CN",
+          "en"
+        ],
+        "default": "zh-CN",
+        "description": "面向用户的提示语言：zh-CN 为简体中文，en 为英文。审核模型看到的提示词不随此设置改变。",
+        "env": "OMP_COMMAND_REVIEW_LANGUAGE"
       }
     }
   }

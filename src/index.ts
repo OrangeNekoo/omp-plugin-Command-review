@@ -38,6 +38,6 @@ export default function commandReviewExtension(pi: ExtensionAPI): void {
     loadSettings,
     review: reviewToolCall,
     confirm: confirmHighRiskCommand,
-    notify: () => sendReviewNotification(TERMINAL),
+    notify: (messages) => sendReviewNotification(TERMINAL, messages),
   }));
 }

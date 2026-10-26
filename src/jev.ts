@@ -1,4 +1,5 @@
 import { ReviewError } from "./errors";
+import { messagesFor, type Language, type Messages } from "./i18n";
 import type { ReviewDecision } from "./policy";
 
 /**
@@ -19,7 +20,7 @@ const DMXAPI_HOST = /^(?:www\.)?dmxapi\.(?:cn|com)$/;
  * - DMXAPI 根地址：追加 `/typesafe/v1/systemone`；
  * - 其它形态无法可靠推导，直接报错要求填写完整端点，避免静默请求错误地址。
  */
-export function resolveJevEndpoint(endpointUrl: string): string {
+export function resolveJevEndpoint(endpointUrl: string, messages: Messages): string {
   const url = new URL(endpointUrl);
   const pathname = url.pathname.replace(/\/+$/, "");
   if (pathname.endsWith(JEV_PATH_SUFFIX)) {
@@ -34,9 +35,7 @@ export function resolveJevEndpoint(endpointUrl: string): string {
     url.pathname = JEV_ENDPOINT_SUFFIX;
     return url.toString();
   }
-  throw new ReviewError(
-    `api=jev 时 endpointUrl 需指向 TypeSafe 端点（以 /systemone 或 /v1 结尾），当前为 ${endpointUrl}。`,
-  );
+  throw new ReviewError(messages.jevEndpointInvalid(endpointUrl));
 }
 
 const JEV_INSTRUCTIONS = [
@@ -63,7 +62,7 @@ export function buildJevRequest(model: string, state: string): Record<string, un
   };
 }
 
-function readAnswer(payload: unknown): { choice: unknown; confidence: unknown } | null {
+function readAnswer(payload: unknown): { choice: unknown } | null {
   if (typeof payload !== "object" || payload === null) return null;
   if (!("answers" in payload)) return null;
   const answers = payload.answers;
@@ -73,20 +72,17 @@ function readAnswer(payload: unknown): { choice: unknown; confidence: unknown } 
   if (typeof answer !== "object" || answer === null) return null;
   if (!("type" in answer) || answer.type !== "choice") return null;
   const choice = "choice" in answer ? answer.choice : undefined;
-  const confidence = "confidence" in answer ? answer.confidence : undefined;
-  return { choice, confidence };
+  return { choice };
 }
 
 /** 解析 TypeSafe 响应；返回 null 表示响应结构无效，调用方按审核失败处理。 */
-export function parseJevResponse(payload: unknown): ReviewDecision | null {
+export function parseJevResponse(payload: unknown, language: Language): ReviewDecision | null {
   const answer = readAnswer(payload);
   if (!answer) return null;
   if (answer.choice !== "pass" && answer.choice !== "review") return null;
 
-  const confidence =
-    typeof answer.confidence === "number" && Number.isFinite(answer.confidence) ? answer.confidence : undefined;
-  const detail = confidence === undefined ? "未返回置信度" : `置信度 ${confidence.toFixed(2)}`;
+  const messages = messagesFor(language);
   return answer.choice === "pass"
-    ? { verdict: "pass", reason: `JEV 判定可以执行（${detail}）。` }
-    : { verdict: "review", reason: `JEV 判定需要人工审查（${detail}）。` };
+    ? { verdict: "pass", reason: messages.jevPassed }
+    : { verdict: "review", reason: messages.jevNeedsReview };
 }

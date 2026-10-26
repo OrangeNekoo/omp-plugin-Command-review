@@ -89,6 +89,41 @@ describe("review config files", () => {
 
     expect(config.notifyEnabled).toBe(false);
   });
+
+  test("uses Simplified Chinese by default", async () => {
+    const { home, cwd } = await makeConfigHome();
+
+    const config = await loadReviewConfig(cwd, {}, { home, env: {} });
+
+    expect(config.language).toBe("zh-CN");
+  });
+
+  test("reads the language from the project configuration", async () => {
+    const { home, cwd } = await makeConfigHome();
+    await mkdir(path.join(cwd, ".omp"), { recursive: true });
+    await writeFile(path.join(cwd, ".omp", "command-review.yml"), "language: en\n");
+
+    const config = await loadReviewConfig(cwd, {}, { home, env: {} });
+
+    expect(config.language).toBe("en");
+  });
+
+  test("reads the language from the environment", async () => {
+    const { home, cwd } = await makeConfigHome();
+
+    const config = await loadReviewConfig(cwd, {}, { home, env: { OMP_COMMAND_REVIEW_LANGUAGE: "en" } });
+
+    expect(config.language).toBe("en");
+  });
+
+  test("rejects an unsupported language instead of silently falling back", async () => {
+    const { home, cwd } = await makeConfigHome();
+    await mkdir(path.join(cwd, ".omp"), { recursive: true });
+    await writeFile(path.join(cwd, ".omp", "command-review.yml"), "language: fr\n");
+
+    await expect(loadReviewConfig(cwd, {}, { home, env: {} })).rejects.toThrow("language");
+  });
+
   test("uses a bounded review timeout by default", async () => {
     const { home, cwd } = await makeConfigHome();
 

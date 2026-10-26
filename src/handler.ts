@@ -4,6 +4,8 @@ import { matchesSkipPattern, isReadOnlyCommand, type ReviewDecision } from "./po
 import { appendAuditRecord, type AuditRecord } from "./audit";
 import { ReviewError, ReviewTimeoutError } from "./errors";
 import { getReviewTimeoutBudgetMs, type ReviewConfig } from "./config";
+import { formatCommandBlock } from "./format";
+import { DEFAULT_LANGUAGE, messagesFor, type Messages } from "./i18n";
 import { shouldSendReviewNotification } from "./notification";
 
 /** 非 bash 工具的审核文本长度上限，避免把整篇文件内容塞进审核请求。 */
@@ -40,9 +42,14 @@ export interface ToolCallHandlerDeps {
   /** 请求审核模型给出结论。 */
   review: (reviewText: string, settings: ReviewConfig, timeoutMs: number) => Promise<ReviewDecision>;
   /** 弹出确认框并返回用户的选择。 */
-  confirm: (ui: Pick<ExtensionUIContext, "select">, title: string, message: string) => Promise<boolean>;
+  confirm: (
+    ui: Pick<ExtensionUIContext, "select">,
+    title: string,
+    message: string,
+    messages: Messages,
+  ) => Promise<boolean>;
   /** 推送等待用户选择的终端通知。 */
-  notify: () => void;
+  notify: (messages: Messages) => void;
 }
 
 export function buildToolCallPayload(event: ToolCallEvent): ToolCallPayload {
@@ -56,21 +63,17 @@ export function buildToolCallPayload(event: ToolCallEvent): ToolCallPayload {
   return { matchText: event.toolName, reviewText: `${event.toolName}\n${truncated}` };
 }
 
-function createTimeoutReason(error: ReviewTimeoutError, settings: ReviewConfig): string {
+function createTimeoutReason(error: ReviewTimeoutError, settings: ReviewConfig, messages: Messages): string {
   const budgetNote = settings.reviewTimeoutMs > error.timeoutMs
-    ? `；配置的 reviewTimeoutMs 为 ${settings.reviewTimeoutMs} 毫秒，但被宿主钩子预算压缩`
+    ? messages.timeoutBudgetNote(settings.reviewTimeoutMs)
     : "";
-  return [
-    `命令审核超时：审核模型在 ${error.timeoutMs} 毫秒内未返回结果${budgetNote}。`,
-    `端点：${settings.endpointUrl ?? "未配置"}；模型：${settings.model ?? "未配置"}；API：${settings.api}。`,
-    "该工具调用已被阻止，未执行。请据此调整后续操作：去掉这条调用、改写为影响更小的形式，或在确认安全后由用户手动执行。",
-  ].join("\n");
+  return messages.timeoutReason(error.timeoutMs, budgetNote);
 }
 
-function describeFailure(error: unknown, settings: ReviewConfig): string {
-  if (error instanceof ReviewTimeoutError) return createTimeoutReason(error, settings);
-  if (error instanceof ReviewError) return `命令审核失败，已阻止执行：${error.message}`;
-  return "命令审核失败，已阻止执行：审核服务暂不可用或配置无效。";
+function describeFailure(error: unknown, settings: ReviewConfig, messages: Messages): string {
+  if (error instanceof ReviewTimeoutError) return createTimeoutReason(error, settings, messages);
+  if (error instanceof ReviewError) return messages.reviewFailedReason(error.message);
+  return messages.reviewUnavailableReason;
 }
 
 async function recordAudit(
@@ -113,8 +116,10 @@ export function createToolCallHandler(deps: ToolCallHandlerDeps): ToolCallHandle
     try {
       settings = await deps.loadSettings(ctx.cwd);
     } catch {
-      return { block: true, reason: "审核配置文件无效或密钥环境变量未设置，已按安全策略阻止执行。" };
+      // 配置无法加载时语言也不可知，按默认语言给出原因。
+      return { block: true, reason: messagesFor(DEFAULT_LANGUAGE).invalidConfigReason };
     }
+    const messages = messagesFor(settings.language);
     if (matchesSkipPattern(tool, payload.matchText, settings.skipCommands)) return;
     if (payload.command !== undefined && isReadOnlyCommand(payload.command)) return;
 
@@ -123,7 +128,7 @@ export function createToolCallHandler(deps: ToolCallHandlerDeps): ToolCallHandle
     try {
       decision = await deps.review(payload.reviewText, settings, reviewTimeoutMs);
     } catch (error) {
-      const reason = describeFailure(error, settings);
+      const reason = describeFailure(error, settings, messages);
       await recordAudit(ctx.cwd, settings, payload, tool, {
         outcome: "error",
         error: error instanceof Error ? error.message : String(error),
@@ -144,23 +149,31 @@ export function createToolCallHandler(deps: ToolCallHandlerDeps): ToolCallHandle
         verdict: "review",
         reason: decision.reason,
       });
-      return { block: true, reason: `命令未通过审核，当前没有交互式确认界面，已阻止执行：${decision.reason}` };
+      return { block: true, reason: messages.noUiBlockedReason(decision.reason) };
     }
 
     if (shouldSendReviewNotification({ notifyEnabled: settings.notifyEnabled, hostAskNotify: deps.askNotify() })) {
-      deps.notify();
+      deps.notify(messages);
     }
 
     const approved = await deps.confirm(
       ctx.ui,
-      "命令审核未通过",
-      `审核结论：${decision.reason}\n\n即将执行：\n${payload.reviewText}\n\n是否继续执行？`,
+      messages.confirmTitle,
+      [
+        `${messages.verdictLabel}${messages.labelSeparator}${decision.reason}`,
+        "",
+        `${messages.upcomingLabel}${messages.labelSuffix}`,
+        formatCommandBlock(payload.reviewText, messages),
+        "",
+        messages.continueQuestion,
+      ].join("\n"),
+      messages,
     );
     await recordAudit(ctx.cwd, settings, payload, tool, {
       outcome: approved ? "allowed" : "blocked",
       verdict: "review",
       reason: decision.reason,
     });
-    if (!approved) return { block: true, reason: "用户拒绝或未确认该工具调用。" };
+    if (!approved) return { block: true, reason: messages.userRejectedReason };
   };
 }

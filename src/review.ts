@@ -2,6 +2,7 @@ import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import { completeSimple, type Model, type ModelSpec } from "@oh-my-pi/pi-ai";
 import type { ReviewConfig } from "./config";
 import { ReviewError, ReviewTimeoutError } from "./errors";
+import { messagesFor, type Messages } from "./i18n";
 import { buildJevRequest, parseJevResponse, resolveJevEndpoint } from "./jev";
 import { parseReviewDecision, type ReviewDecision } from "./policy";
 
@@ -14,12 +15,17 @@ const SYSTEM_PROMPT = [
   "Use review for anything destructive, irreversible, system-wide, security-related, or ambiguous, so a human decides.",
 ];
 
-function createReviewModel(endpointUrl: string, api: "openai-responses" | "openai-completions", modelId: string): Model {
+function createReviewModel(
+  endpointUrl: string,
+  api: "openai-responses" | "openai-completions",
+  modelId: string,
+  messages: Messages,
+): Model {
   const url = new URL(endpointUrl);
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new ReviewError("审核模型 URL 必须使用 HTTP 或 HTTPS。");
+    throw new ReviewError(messages.urlSchemeInvalid);
   }
-  if (url.username || url.password) throw new ReviewError("请勿将账号或密钥写入审核模型 URL。");
+  if (url.username || url.password) throw new ReviewError(messages.urlCredentialsInvalid);
 
   const spec: ModelSpec<"openai-responses" | "openai-completions"> = {
     id: modelId,
@@ -37,25 +43,26 @@ function createReviewModel(endpointUrl: string, api: "openai-responses" | "opena
   return buildModel(spec);
 }
 
-function requireEndpoint(settings: ReviewConfig): string {
-  if (!settings.endpointUrl) throw new ReviewError("未配置审核模型 URL，请先完成插件配置。");
+function requireEndpoint(settings: ReviewConfig, messages: Messages): string {
+  if (!settings.endpointUrl) throw new ReviewError(messages.endpointMissing);
   return settings.endpointUrl;
 }
 
-function requireModel(settings: ReviewConfig): string {
-  if (!settings.model) throw new ReviewError("未配置审核模型 ID，请先完成插件配置。");
+function requireModel(settings: ReviewConfig, messages: Messages): string {
+  if (!settings.model) throw new ReviewError(messages.modelMissing);
   return settings.model;
 }
 
 async function reviewWithChatApi(target: string, settings: ReviewConfig, timeoutMs: number): Promise<ReviewDecision> {
-  const endpointUrl = requireEndpoint(settings);
-  const modelId = requireModel(settings);
+  const messages = messagesFor(settings.language);
+  const endpointUrl = requireEndpoint(settings, messages);
+  const modelId = requireModel(settings, messages);
   const api = settings.api === "responses" ? "openai-responses" : "openai-completions";
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   let response;
   try {
     response = await completeSimple(
-      createReviewModel(endpointUrl, api, modelId),
+      createReviewModel(endpointUrl, api, modelId, messages),
       {
         systemPrompt: SYSTEM_PROMPT,
         messages: [{ role: "user", content: `<tool_call>\n${target}\n</tool_call>`, timestamp: Date.now() }],
@@ -70,16 +77,16 @@ async function reviewWithChatApi(target: string, settings: ReviewConfig, timeout
   } catch (error) {
     if (timeoutSignal.aborted) throw new ReviewTimeoutError(timeoutMs);
     if (error instanceof ReviewError) throw error;
-    throw new ReviewError("无法连接审核模型服务。");
+    throw new ReviewError(messages.serviceUnreachable);
   }
   if (timeoutSignal.aborted || response.stopReason === "aborted") throw new ReviewTimeoutError(timeoutMs);
-  if (response.stopReason !== "stop") throw new ReviewError("审核模型未返回完整结果。");
+  if (response.stopReason !== "stop") throw new ReviewError(messages.incompleteResult);
   const text = response.content
     .filter((block) => block.type === "text")
     .map((block) => block.text)
     .join("\n");
   const decision = parseReviewDecision(text);
-  if (!decision) throw new ReviewError("审核模型响应格式无效。");
+  if (!decision) throw new ReviewError(messages.invalidResponseFormat);
   return decision;
 }
 
@@ -95,9 +102,10 @@ function readErrorMessage(payload: unknown): string | undefined {
 }
 
 async function reviewWithJev(target: string, settings: ReviewConfig, timeoutMs: number): Promise<ReviewDecision> {
-  const endpoint = resolveJevEndpoint(requireEndpoint(settings));
-  const modelId = requireModel(settings);
-  if (!settings.apiKey) throw new ReviewError("JEV 审核需要配置 API key。");
+  const messages = messagesFor(settings.language);
+  const endpoint = resolveJevEndpoint(requireEndpoint(settings, messages), messages);
+  const modelId = requireModel(settings, messages);
+  if (!settings.apiKey) throw new ReviewError(messages.jevApiKeyMissing);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -115,18 +123,16 @@ async function reviewWithJev(target: string, settings: ReviewConfig, timeoutMs: 
     if (!response.ok) {
       const body: unknown = await response.json().catch(() => undefined);
       const detail = readErrorMessage(body);
-      throw new ReviewError(
-        `审核服务返回 HTTP ${response.status}${detail ? `：${detail}` : ""}（${endpoint}）。`,
-      );
+      throw new ReviewError(messages.jevHttpError(response.status, detail, endpoint));
     }
     const payload: unknown = await response.json().catch(() => undefined);
-    const decision = parseJevResponse(payload);
-    if (!decision) throw new ReviewError("JEV 审核响应格式无效。");
+    const decision = parseJevResponse(payload, settings.language);
+    if (!decision) throw new ReviewError(messages.jevInvalidResponse);
     return decision;
   } catch (error) {
     if (controller.signal.aborted) throw new ReviewTimeoutError(timeoutMs);
     if (error instanceof ReviewError) throw error;
-    throw new ReviewError(`无法连接审核服务（${endpoint}）。`);
+    throw new ReviewError(messages.jevUnreachable(endpoint));
   } finally {
     clearTimeout(timer);
   }

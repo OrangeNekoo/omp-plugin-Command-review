@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ExtensionContext, ExtensionUIContext, ToolCallEvent } from "@oh-my-pi/pi-coding-agent";
 import { createToolCallHandler, type ToolCallHandler, type ToolCallHandlerDeps } from "../src/handler";
 import type { ReviewConfig } from "../src/config";
+import { messagesFor } from "../src/i18n";
 import type { ReviewDecision } from "../src/policy";
 
 /**
@@ -18,6 +19,7 @@ const BASE_SETTINGS: ReviewConfig = {
   thinkingEnabled: false,
   reviewTimeoutMs: 20_000,
   notifyEnabled: true,
+  language: "zh-CN",
 };
 
 interface Harness {
@@ -25,6 +27,7 @@ interface Harness {
   notifications: number;
   selections: string[][];
   reviewedText: string[];
+  titles: string[];
 }
 
 function createHarness(overrides: Partial<ToolCallHandlerDeps> = {}): Harness {
@@ -33,6 +36,7 @@ function createHarness(overrides: Partial<ToolCallHandlerDeps> = {}): Harness {
     notifications: 0,
     selections: [],
     reviewedText: [],
+    titles: [],
   };
   const decision: ReviewDecision = { verdict: "review", reason: "需要人工确认" };
   harness.handler = createToolCallHandler({
@@ -44,7 +48,13 @@ function createHarness(overrides: Partial<ToolCallHandlerDeps> = {}): Harness {
       harness.reviewedText.push(reviewText);
       return decision;
     },
-    confirm: async (_ui: Pick<ExtensionUIContext, "select">, _title: string, message: string) => {
+    confirm: async (
+      _ui: Pick<ExtensionUIContext, "select">,
+      title: string,
+      message: string,
+      messages,
+    ) => {
+      harness.titles.push(title);
       harness.selections.push([message]);
       return true;
     },
@@ -143,5 +153,39 @@ describe("tool call handler", () => {
 
     expect(harness.notifications).toBe(1);
     expect(result).toMatchObject({ block: true });
+  });
+
+  test("shows the confirmation in the configured language", async () => {
+    const harness = createHarness({
+      loadSettings: async () => ({ ...BASE_SETTINGS, language: "en" }),
+    });
+
+    await harness.handler(bashEvent("rm -rf build"), createContext(true));
+
+    const en = messagesFor("en");
+    expect(harness.titles).toEqual([en.confirmTitle]);
+    expect(harness.selections[0]?.[0]).toContain(en.verdictLabel);
+    expect(harness.selections[0]?.[0]).toContain(en.upcomingLabel);
+    expect(harness.selections[0]?.[0]).toContain(en.continueQuestion);
+    expect(harness.selections[0]?.[0]).not.toContain("审核结论");
+  });
+
+  test("formats the pending command as an indented block without the tool prefix", async () => {
+    const harness = createHarness();
+
+    await harness.handler(bashEvent("rm -rf build && rm -rf dist"), createContext(true));
+
+    const message = harness.selections[0]?.[0] ?? "";
+    expect(message).toContain("  rm -rf build && rm -rf dist");
+    expect(message).not.toContain("\nbash\n");
+  });
+
+  test("keeps every line of a multi-line command indented", async () => {
+    const harness = createHarness();
+
+    await harness.handler(bashEvent("cd /tmp\nrm -rf build"), createContext(true));
+
+    const message = harness.selections[0]?.[0] ?? "";
+    expect(message).toContain("  cd /tmp\n  rm -rf build");
   });
 });

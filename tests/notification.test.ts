@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
-  REVIEW_CONFIRMATION_NOTIFICATION,
+  reviewConfirmationNotification,
   sendReviewNotification,
   shouldSendReviewNotification,
 } from "../src/notification";
+import { messagesFor } from "../src/i18n";
 
 describe("review notification", () => {
   test("notifies while both the plugin switch and the host ask.notify allow it", () => {
@@ -21,10 +22,23 @@ describe("review notification", () => {
 
   test("sends the review confirmation notification through the given sender", () => {
     const sent: unknown[] = [];
-    sendReviewNotification({ sendNotification: (message) => sent.push(message) });
+    sendReviewNotification({ sendNotification: (message) => sent.push(message) }, messagesFor("zh-CN"));
 
-    expect(sent).toEqual([REVIEW_CONFIRMATION_NOTIFICATION]);
-    expect(REVIEW_CONFIRMATION_NOTIFICATION.body).toBe("命令审核未通过，等待确认");
-    expect(REVIEW_CONFIRMATION_NOTIFICATION.type).toBe("ask");
+    expect(sent).toEqual([
+      {
+        title: "omp",
+        body: "命令审核未通过，等待确认",
+        type: "ask",
+        urgency: "normal",
+        actions: "focus",
+      },
+    ]);
+  });
+
+  test("uses the configured language in the notification body", () => {
+    const en = messagesFor("en");
+
+    expect(reviewConfirmationNotification(en).body).toBe("Command review failed, waiting for confirmation");
+    expect(reviewConfirmationNotification(messagesFor("zh-CN")).body).toBe("命令审核未通过，等待确认");
   });
 });

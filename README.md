@@ -81,6 +81,7 @@ omp-zh --extension /绝对路径/omp-plugin-Command-review
 | `thinkingEnabled` | boolean | `false` | 是否启用模型思考模式；仅对 `chat-completions` 与 `responses` 生效。 |
 | `reviewTimeoutMs` | number | `20000` | 审核请求超时毫秒数，实际取值受宿主钩子预算压缩（见[超时](#超时)）。 |
 | `notifyEnabled` | boolean | `true` | 审核未通过、等待用户选择时是否推送终端通知；同时受 omp 的 `ask.notify` 约束（见[通知](#通知)）。 |
+| `language` | enum | `zh-CN` | 面向用户的提示语言：`zh-CN` 为简体中文，`en` 为英文（见[语言](#语言)）。 |
 
 ### 完整示例
 
@@ -93,6 +94,7 @@ auditLogEnabled: true
 thinkingEnabled: false
 reviewTimeoutMs: 20000
 notifyEnabled: true
+language: zh-CN
 skipCommands:
   - "read"
   - "grep"
@@ -101,6 +103,7 @@ skipCommands:
   - "write"
   - "npm test*"
   - "pnpm lint"
+  - "ask"
 ```
 
 ### 跳过的匹配规则
@@ -197,6 +200,19 @@ reviewTimeoutMs: 45000
 notifyEnabled: false
 ```
 
+## 语言
+
+`language` 决定面向用户的提示用哪种语言：`zh-CN`（默认）显示简体中文，`en` 显示英文。切换后，审核确认框的标题与选项、终端通知正文、以及阻断原因回传给模型的文字都会随之改变。
+
+语言只影响用户可见文案。发给审核模型的提示词与 JEV 判据不随语言改变，审核行为在任何语言下保持一致。
+
+配置值必须是 `zh-CN` 或 `en`；其它取值会让插件按安全策略阻止调用，而不是静默回落到默认语言。
+
+```yaml
+# <项目>/.omp/command-review.yml
+language: en
+```
+
 ## 日志
 
 `auditLogEnabled: true` 时，插件把每次实际送审的调用与结论写入当前项目：
@@ -241,6 +257,7 @@ notifyEnabled: false
 | `OMP_COMMAND_REVIEW_THINKING` | `thinkingEnabled` |
 | `OMP_COMMAND_REVIEW_TIMEOUT_MS` | `reviewTimeoutMs` |
 | `OMP_COMMAND_REVIEW_NOTIFY_ENABLED` | `notifyEnabled` |
+| `OMP_COMMAND_REVIEW_LANGUAGE` | `language` |
 
 ```sh
 export OMP_COMMAND_REVIEW_URL='https://api.example.com/v1'
@@ -261,6 +278,7 @@ omp-zh plugin config set omp-command-review auditLogEnabled true
 omp-zh plugin config set omp-command-review thinkingEnabled true
 omp-zh plugin config set omp-command-review reviewTimeoutMs 20000
 omp-zh plugin config set omp-command-review notifyEnabled false
+omp-zh plugin config set omp-command-review language en
 omp-zh plugin config set omp-command-review skipCommands 'read,grep,glob,edit,write,npm test*'
 ```
 
@@ -295,6 +313,8 @@ bun run typecheck   # 类型检查
 | `src/audit.ts` | 写入 JSON 数组日志 |
 | `src/confirmation.ts` | 交互确认框 |
 | `src/notification.ts` | 等待用户选择时的终端通知，并读取宿主 `ask.notify` 开关 |
+| `src/i18n.ts` | 中英文案目录与语言解析 |
+| `src/format.ts` | 确认框里待执行命令的排版 |
 | `src/errors.ts` | 可回传的错误类型 |
 
 ## [开源协议](LICENSE)

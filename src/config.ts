@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { YAML } from "bun";
+import { isSupportedLanguage, type Language, resolveLanguage } from "./i18n";
 import { parseSkipPatterns } from "./policy";
 
 /** `jev` 走 TypeSafe System One 端点，请求体由插件按官方格式构造。 */
@@ -16,6 +17,7 @@ export interface ReviewConfig {
   thinkingEnabled: boolean;
   reviewTimeoutMs: number;
   notifyEnabled: boolean;
+  language: Language;
 }
 
 interface ReviewConfigFile {
@@ -29,6 +31,7 @@ interface ReviewConfigFile {
   thinkingEnabled?: boolean;
   reviewTimeoutMs?: number;
   notifyEnabled?: boolean;
+  language?: string;
 }
 
 
@@ -53,6 +56,7 @@ const ENV_KEYS = {
   thinkingEnabled: "OMP_COMMAND_REVIEW_THINKING",
   reviewTimeoutMs: "OMP_COMMAND_REVIEW_TIMEOUT_MS",
   notifyEnabled: "OMP_COMMAND_REVIEW_NOTIFY_ENABLED",
+  language: "OMP_COMMAND_REVIEW_LANGUAGE",
 } as const;
 
 
@@ -99,6 +103,17 @@ function readPositiveInteger(value: unknown, field: string): number | undefined 
   return numberValue;
 }
 
+/** 读取语言字段；只接受受支持的语言，其余取值报错而不是静默回落。 */
+function readLanguage(value: unknown, field: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  const language = readString(value, field);
+  if (language === undefined) return undefined;
+  if (!isSupportedLanguage(language)) {
+    throw new Error(`配置字段 ${field} 必须是 zh-CN 或 en。`);
+  }
+  return language;
+}
+
 export function getReviewTimeoutBudgetMs(reviewTimeoutMs: number, toolCallTimeoutMs: number): number {
   const hostBudgetMs = Math.max(1, Math.floor(toolCallTimeoutMs * 0.8));
   return Math.min(reviewTimeoutMs, hostBudgetMs);
@@ -121,6 +136,7 @@ function normalizeFile(value: unknown, source: string): ReviewConfigFile {
     thinkingEnabled: true,
     reviewTimeoutMs: true,
     notifyEnabled: true,
+    language: true,
   };
   for (const key of Object.keys(record)) {
     if (!allowed[key]) throw new Error(`${source} 包含未知字段 ${key}。`);
@@ -136,6 +152,7 @@ function normalizeFile(value: unknown, source: string): ReviewConfigFile {
     thinkingEnabled: readBoolean(record.thinkingEnabled, `${source}.thinkingEnabled`),
     reviewTimeoutMs: readPositiveInteger(record.reviewTimeoutMs, `${source}.reviewTimeoutMs`),
     notifyEnabled: readBoolean(record.notifyEnabled, `${source}.notifyEnabled`),
+    language: readLanguage(record.language, `${source}.language`),
   };
 
 }
@@ -150,6 +167,7 @@ function normalizePluginSettings(settings: Record<string, unknown>): ReviewConfi
     thinkingEnabled: readBoolean(settings.thinkingEnabled, "plugin.thinkingEnabled"),
     reviewTimeoutMs: readPositiveInteger(settings.reviewTimeoutMs, "plugin.reviewTimeoutMs"),
     notifyEnabled: readBoolean(settings.notifyEnabled, "plugin.notifyEnabled"),
+    language: readLanguage(settings.language, "plugin.language"),
   };
 }
 function mergeConfigFiles(...sources: ReviewConfigFile[]): ReviewConfigFile {
@@ -202,6 +220,7 @@ export async function loadReviewConfig(
     thinkingEnabled: readBoolean(env[ENV_KEYS.thinkingEnabled], "环境变量 OMP_COMMAND_REVIEW_THINKING"),
     reviewTimeoutMs: readPositiveInteger(env[ENV_KEYS.reviewTimeoutMs], "环境变量 OMP_COMMAND_REVIEW_TIMEOUT_MS"),
     notifyEnabled: readBoolean(env[ENV_KEYS.notifyEnabled], "环境变量 OMP_COMMAND_REVIEW_NOTIFY_ENABLED"),
+    language: readLanguage(env[ENV_KEYS.language], "环境变量 OMP_COMMAND_REVIEW_LANGUAGE"),
   };
   const merged = mergeConfigFiles(environment, normalizePluginSettings(pluginSettings), globalFile, projectFile);
   return {
@@ -214,5 +233,6 @@ export async function loadReviewConfig(
     thinkingEnabled: merged.thinkingEnabled ?? false,
     reviewTimeoutMs: merged.reviewTimeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS,
     notifyEnabled: merged.notifyEnabled ?? true,
+    language: resolveLanguage(merged.language),
   };
 }
