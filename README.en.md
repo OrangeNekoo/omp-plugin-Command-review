@@ -102,6 +102,7 @@ skipCommands:
   - "npm test*"
   - "pnpm lint"
   - "ask"
+  - "todo"
 ```
 
 ### How skipping matches

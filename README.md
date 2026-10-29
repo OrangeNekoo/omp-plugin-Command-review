@@ -104,6 +104,7 @@ skipCommands:
   - "npm test*"
   - "pnpm lint"
   - "ask"
+  - "todo"
 ```
 
 ### 跳过的匹配规则
