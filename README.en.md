@@ -164,6 +164,7 @@ skipCommands:
 ## Behavior
 
 - Only tool calls are intercepted, and only when the effective `tools.approvalMode` is `yolo`. The `tool_call` event carries no approval mode, so the plugin reads the value from the settings registry instead of waiting for an approval request that yolo never raises.
+- Every tool call re-confirms that the plugin is still enabled in the host (the enable flag written by `/plugins disable` or the TUI plugin switch). The host's switch only affects the load list of new sessions; hooks already registered in a running process are never revoked, so the plugin stands down on its own: once disabled it stops reviewing and stops prompting immediately, with no session restart. If reading the enable flag fails, the plugin treats itself as enabled so protection is never dropped silently.
 - Clearly read-only shell commands such as `git status`, `rg`, `cat`, and `npm list`, including chains made only of them, are allowed without contacting the model. Write redirections, shell expansion, unknown programs, or commands that may change state are not treated as read-only.
 - For non-bash tools the review text is the input JSON, truncated at 8000 characters with a marker.
 - Model errors, malformed responses, timeouts, and the absence of an interactive UI all block execution and return the reason to the working model. A cancelled selector or an unrecognized choice counts as a refusal.
@@ -281,7 +282,7 @@ omp-zh plugin config set omp-command-review language en
 omp-zh plugin config set omp-command-review skipCommands 'read,grep,glob,edit,write,npm test*'
 ```
 
-Loaded settings are cached per working directory. Restart the omp-zh session after changing configuration files or plugin settings.
+Loaded settings are cached per working directory. Restart the omp-zh session after changing configuration files or plugin settings. Plugin enablement is not cached: disabling the plugin in the TUI or with `/plugins disable` takes effect immediately.
 
 ## Thinking mode
 

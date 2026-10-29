@@ -43,6 +43,7 @@ function createHarness(overrides: Partial<ToolCallHandlerDeps> = {}): Harness {
     approvalMode: () => "yolo",
     toolCallTimeoutMs: () => 30_000,
     askNotify: () => "on",
+    isPluginEnabled: async () => true,
     loadSettings: async () => BASE_SETTINGS,
     review: async (reviewText) => {
       harness.reviewedText.push(reviewText);
@@ -129,6 +130,38 @@ describe("tool call handler", () => {
     expect(harness.selections).toHaveLength(0);
     expect(harness.reviewedText).toEqual([]);
     expect(result).toBeUndefined();
+  });
+
+  test("stops reviewing once the plugin is disabled in the host", async () => {
+    let settingsReads = 0;
+    const harness = createHarness({
+      isPluginEnabled: async () => false,
+      loadSettings: async () => {
+        settingsReads += 1;
+        return BASE_SETTINGS;
+      },
+    });
+
+    const result = await harness.handler(bashEvent("rm -rf build"), createContext(true));
+
+    expect(settingsReads).toBe(0);
+    expect(harness.reviewedText).toEqual([]);
+    expect(harness.selections).toHaveLength(0);
+    expect(harness.notifications).toBe(0);
+    expect(result).toBeUndefined();
+  });
+
+  test("keeps reviewing when the enablement lookup itself fails", async () => {
+    const harness = createHarness({
+      isPluginEnabled: async () => {
+        throw new Error("插件目录不可读");
+      },
+    });
+
+    await harness.handler(bashEvent("rm -rf build"), createContext(true));
+
+    expect(harness.reviewedText).toEqual(["bash\nrm -rf build"]);
+    expect(harness.selections).toHaveLength(1);
   });
 
   test("blocks and explains the failure when the review model errors out", async () => {

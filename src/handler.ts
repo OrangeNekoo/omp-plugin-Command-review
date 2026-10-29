@@ -37,6 +37,11 @@ export interface ToolCallHandlerDeps {
   toolCallTimeoutMs: () => number;
   /** 宿主 `ask.notify` 设置；`off` 时不推送等待选择通知。每次调用时读取。 */
   askNotify: () => string | undefined;
+  /**
+   * 插件在宿主里是否仍处于启用状态。每次调用时读取：在 TUI 里禁用插件后，
+   * 已注册的处理器不会被宿主卸载，只能由插件自己停手。
+   */
+  isPluginEnabled: (cwd: string) => Promise<boolean>;
   /** 读取当前工作目录的插件配置。 */
   loadSettings: (cwd: string) => Promise<ReviewConfig>;
   /** 请求审核模型给出结论。 */
@@ -109,6 +114,10 @@ export type ToolCallHandler = (event: ToolCallEvent, ctx: ExtensionContext) => P
 export function createToolCallHandler(deps: ToolCallHandlerDeps): ToolCallHandler {
   return async (event, ctx) => {
     if (deps.approvalMode() !== "yolo") return;
+    // 宿主的插件开关只影响新会话的加载列表，当前进程里已注册的钩子不会被撤销。
+    // 每次调用都读取一次启用状态，禁用后立即停止审核；读取失败时保守地继续审核。
+    const stillEnabled = await deps.isPluginEnabled(ctx.cwd).catch(() => true);
+    if (!stillEnabled) return;
 
     const tool = event.toolName;
     const payload = buildToolCallPayload(event);

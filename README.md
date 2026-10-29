@@ -166,6 +166,7 @@ skipCommands:
 ## 审核行为
 
 - 只拦截工具调用，且仅在有效 `tools.approvalMode` 为 `yolo` 时生效。omp-zh 的 `tool_call` 事件不携带审批模式，插件通过设置注册表读取该值，而不是等待 yolo 模式下不会触发的审批请求事件。
+- 每次工具调用都会向宿主确认插件仍处于启用状态（`/plugins disable` 或 TUI 插件开关写入的启用标记）。宿主的开关只影响新会话的加载列表，当前进程里已注册的钩子不会被撤销，所以插件自己停手：禁用后立即不再审核、不弹确认框，无需重启会话。启用状态读取失败时按仍启用处理，避免静默丢掉防护。
 - 明确的只读 shell 命令（例如 `git status`、`rg`、`cat`、`npm list`）以及只由这些命令组成的命令链，直接放行，不发送给模型。带写入重定向、shell 展开、未知程序或可能修改状态的命令不按只读处理。
 - 非 bash 工具的审核文本是入参 JSON，超过 8000 字符会截断并标注“已截断”。
 - 模型调用失败、响应格式无效、请求超时或当前没有交互界面时，一律阻止执行，并把原因回传给工作中的模型。选择框被取消或返回无法识别的选项，同样按拒绝处理。
@@ -283,7 +284,7 @@ omp-zh plugin config set omp-command-review language en
 omp-zh plugin config set omp-command-review skipCommands 'read,grep,glob,edit,write,npm test*'
 ```
 
-插件按工作目录缓存已加载的配置。修改配置文件或插件设置后，需要重启 omp-zh 会话才会生效。
+插件按工作目录缓存已加载的配置。修改配置文件或插件设置后，需要重启 omp-zh 会话才会生效。插件启用状态不缓存：在 TUI 或 `/plugins disable` 里关掉插件后立即生效。
 
 ## 思考模式
 

@@ -1,5 +1,5 @@
 import { lookup } from "@oh-my-pi/pi-coding-agent/config/registry";
-import { getPluginSettings } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader";
+import { getEnabledPlugins, getPluginSettings } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { TERMINAL } from "@oh-my-pi/pi-tui/terminal-capabilities";
 import { confirmHighRiskCommand } from "./confirmation";
@@ -35,6 +35,8 @@ export default function commandReviewExtension(pi: ExtensionAPI): void {
       return typeof configured === "number" ? configured : DEFAULT_TOOL_CALL_TIMEOUT_MS;
     },
     askNotify: () => readHostAskNotify(pi.pi.settings),
+    isPluginEnabled: async (cwd) =>
+      (await getEnabledPlugins(cwd)).some((plugin) => plugin.name === PLUGIN_NAME),
     loadSettings,
     review: reviewToolCall,
     confirm: confirmHighRiskCommand,
